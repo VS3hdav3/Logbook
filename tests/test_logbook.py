@@ -12,7 +12,7 @@ sys.path.insert(0, SRC)
 os.environ["PYTHONPATH"] = SRC + os.pathsep + os.environ.get("PYTHONPATH", "")  # hooks spawn `python -m getlogbook`
 os.environ["LOGBOOK_NO_SPAWN"] = "1"  # detached workers would keep temp dirs locked on Windows
 
-from getlogbook import capture, recall, safety, sync, tree  # noqa: E402
+from getlogbook import capture, cli, recall, safety, sync, tree  # noqa: E402
 from getlogbook import git as g  # noqa: E402
 from getlogbook.entry import from_dict, new_id  # noqa: E402
 from getlogbook.store import Repo  # noqa: E402
@@ -278,3 +278,26 @@ class TestCapture(Base):
         capture.install_claude(r, write=True, remove=True)
         self.assertNotIn("logbook", p.read_text())
         self.assertIn("echo other", p.read_text())
+
+
+class TestPolicyAndTrust(Base):
+    def test_policy_and_attribution(self):
+        d = make_repo(self.root, "r", "a@x.io")
+        commit(d, "b", {"a.txt": "x"})
+        r = Repo(d)
+        r.init()
+        self.assertEqual(r.attribution(), "pseudonym")
+        c = r.cfg()
+        c["attribution"] = "named"
+        r.save_cfg(c)
+        self.assertEqual(r.attribution(), "pseudonym", "the default policy ceiling keeps names off")
+        (d / ".logbook").mkdir()
+        (d / ".logbook" / "policy.json").write_text(json.dumps({"publish": False, "inject_from": "self", "attribution": "named"}))
+        self.assertEqual(r.attribution(), "named")
+        c["trusted"] = ["abc"]
+        r.save_cfg(c)
+        self.assertEqual(r.trusted(), {r.user}, "policy inject_from=self overrides personal trust")
+        self.cd(d)
+        e = capture.make_entry(r, "finding", "t", {"summary": "s"})
+        with self.assertRaises(SystemExit):
+            cli.cmd_publish(type("A", (), {"ids": [e.id], "yes": True, "push": False, "include_evidence": False, "allow_table": False})())
