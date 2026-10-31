@@ -216,3 +216,64 @@ def cmd_path(a):
         for v in by.get(s, []):
             out("    - " + v["topic"] + f"  [{v['kind']}, {v['author']}]")
     return 0
+
+
+def cmd_status(a):
+    r = need_repo()
+    vs, an = views(r)
+    shared, _ = r.load_shared()
+    spool = list((r.cdir / "spool").glob("*.json")) if (r.cdir / "spool").exists() else []
+    sess = [p for p in (r.cdir / "sessions").iterdir()] if (r.cdir / "sessions").exists() else []
+    out(f"you: {r.user}  device: {r.device}  attribution: {r.attribution()}  transport: {r.cfg().get('transport', 'refs')}")
+    out(f"entries: {len(vs)} visible ({sum(1 for v in vs if v['scope'] == 'private')} private, "
+        f"{sum(1 for v in vs if v['scope'] == 'shared')} shared) from {len({(l.user, l.device) for l in shared})} writer devices")
+    out(f"capture: {len(spool)} spooled events waiting, {len([s for s in sess if s.is_dir()])} sessions seen")
+    if an.shallow:
+        out("note: shallow clone; some anchors are unverified")
+    if not shared and (r.cdir / "private").exists():
+        out("note: nothing shared yet: `logbook publish <id>` then `logbook sync`; or `logbook join` to fetch teammates' entries")
+
+
+def cmd_doctor(a):
+    r = need_repo()
+    bad = False
+    for level, msg in sync.doctor(r, a.remote):
+        out(f"[{level:<4}] {msg}")
+        bad |= level == "fail"
+    out("capture matrix (what is covered):")
+    out("  claude-code : " + ("hooks installed" if _claude_installed(r) else "NOT installed: `logbook install --agent claude-code --write`"))
+    out("  other agents: NOT captured by hooks (tier 2/3). They are covered only by the git post-commit floor (inferred entries),")
+    out("                or by `logbook note` / `logbook note --from-stdin` run by the agent or you.")
+    return 1 if bad else 0
+
+
+def _claude_installed(r):
+    p = r.root / ".claude" / "settings.local.json"
+    return p.exists() and "getlogbook capture" in p.read_text(encoding="utf-8", errors="ignore")
+
+
+def cmd_reconcile(a):
+    r = need_repo()
+    res = capture.reconcile(r)
+    if not a.quiet:
+        out(json.dumps(res))
+
+
+def cmd_capture(a):
+    try:
+        text = capture.handle_hook(a.event, a.agent, sys.stdin.read() if not sys.stdin.isatty() else "")
+        if text:
+            sys.stdout.write(text)
+    except Exception:
+        pass
+    return 0  # a hook must never fail the agent
+
+
+def cmd_post_commit(a):
+    try:  # attach pending entries now (fast); the sweep for hook-less commits runs detached so the commit never waits
+        r = Repo(".")
+        capture.post_commit(r)
+        capture.spawn_detached([r.cfg().get("interpreter") or sys.executable, "-m", "getlogbook", "reconcile", "--quiet"], r.root)
+    except Exception:
+        pass
+    return 0
