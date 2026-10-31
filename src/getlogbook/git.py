@@ -67,3 +67,78 @@ def existing_commits(cwd, shas):
 
 def toplevel(cwd):
     return Path(run(["rev-parse", "--show-toplevel"], cwd).strip())
+
+
+def common_dir(cwd):
+    return Path(run(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd).strip())
+
+
+def head_sha(cwd):
+    rc, out, _ = try_run(["rev-parse", "--verify", "-q", "HEAD"], cwd)
+    return out.strip() if rc == 0 else None
+
+
+def branch(cwd):
+    rc, out, _ = try_run(["symbolic-ref", "--short", "-q", "HEAD"], cwd)
+    return out.strip() if rc == 0 else "HEAD"
+
+
+def is_shallow(cwd):
+    return run(["rev-parse", "--is-shallow-repository"], cwd).strip() == "true"
+
+
+def is_dirty(cwd):
+    return bool(run(["status", "--porcelain"], cwd).strip())
+
+
+def config_get(cwd, key):
+    rc, out, _ = try_run(["config", "--get", key], cwd)
+    return out.strip() if rc == 0 else ""
+
+
+def commit_exists(cwd, sha):
+    return bool(sha) and try_run(["cat-file", "-e", f"{sha}^{{commit}}"], cwd)[0] == 0
+
+
+def commit_info(cwd, sha):
+    """Return dict(sha, tree, parent, author, date, subject) or None."""
+    rc, out, _ = try_run(["show", "-s", "--format=%H%x1f%T%x1f%P%x1f%an%x1f%aI%x1f%s", sha], cwd)
+    if rc:
+        return None
+    h, t, p, an, ad, s = (out.rstrip("\n").split("\x1f") + [""] * 6)[:6]
+    return {"sha": h, "tree": t, "parent": p.split()[0] if p else "", "author": an, "date": ad, "subject": s}
+
+
+def patch_id(cwd, sha):
+    """Stable patch-id of a single-parent commit, else None."""
+    rc, patch, _ = try_run(["diff-tree", "-p", "--root", sha], cwd)
+    if rc or not patch.strip():
+        return None
+    rc, out, _ = try_run(["patch-id", "--stable"], cwd, input=patch)
+    return out.split()[0] if rc == 0 and out.split() else None
+
+
+def changed_paths(cwd, sha):
+    rc, out, _ = try_run(["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha], cwd)
+    return [l for l in out.splitlines() if l] if rc == 0 else []
+
+
+def cat_blobs(cwd, oids):
+    """oid -> bytes for many blobs in one process."""
+    if not oids:
+        return {}
+    p = subprocess.run(["git", "-C", str(cwd), "cat-file", "--batch"], input=("\n".join(oids) + "\n").encode(),
+                       capture_output=True, env=_env())
+    data, pos, res = p.stdout, 0, {}
+    for oid in oids:
+        nl = data.find(b"\n", pos)
+        if nl < 0:
+            break
+        header = data[pos:nl].split()
+        if len(header) == 3 and header[1] == b"blob":
+            size = int(header[2])
+            res[oid] = data[nl + 1:nl + 1 + size]
+            pos = nl + 1 + size + 1
+        else:
+            pos = nl + 1
+    return res
