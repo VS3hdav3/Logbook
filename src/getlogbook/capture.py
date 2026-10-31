@@ -229,3 +229,76 @@ def _finalize(repo, sid, d, st, agent, head, branch):
     e.anchor = a
     repo.add_private(e)
     return e
+
+
+def reconcile(repo, quiet=True):
+    """Process spooled hook events, recover crashed sessions, and record commits that have no entry."""
+    done = {"drafts": 0, "floor": 0, "pending": 0}
+    sessions = {}
+    spool = repo.cdir / "spool"
+    for p in sorted(spool.glob("*.json")) if spool.exists() else []:
+        try:
+            it = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            p.unlink(missing_ok=True)
+            continue
+        sid = it.get("session") or "nosession"
+        s = sessions.setdefault(sid, {"agent": it.get("agent", ""), "transcript": "", "final": False, "head": "", "branch": "", "paths": set()})
+        s["transcript"] = it.get("transcript") or s["transcript"]
+        s["head"], s["branch"] = it.get("head") or s["head"], it.get("branch") or s["branch"]
+        s["paths"] |= set(it.get("paths", []))
+        s["final"] |= it.get("event") in ("PreCompact", "SessionEnd")
+        p.unlink(missing_ok=True)
+    for sid, s in sessions.items():
+        safe = _sid(sid)
+        got = checkpoint(repo, safe, s["transcript"], s["paths"], {"agent": s["agent"], "head": s["head"], "branch": s["branch"]})
+        if got and s["final"]:
+            d = got[0]
+            with _lock(d / ".lock") as ok:
+                st = _load(d)
+                if ok and _finalize(repo, safe, d, st, s["agent"], s["head"], s["branch"]):
+                    done["drafts"] += 1
+                    st["paths"] = []
+                if ok:
+                    atomic_write(d / "state.json", json.dumps(st))
+    # crash recovery: sessions with unsummarised bytes and no activity for 30 minutes
+    sdir = repo.cdir / "sessions"
+    for d in sdir.iterdir() if sdir.exists() else []:
+        if not d.is_dir():
+            continue
+        with _lock(d / ".lock") as ok:
+            st = _load(d)
+            if ok and st["offset"] > st["summarized"] and time.time() - st.get("last", 0) > 1800:
+                if _finalize(repo, d.name, d, st, st.get("agent", ""), st.get("head", ""), st.get("branch", "")):
+                    done["drafts"] += 1
+                atomic_write(d / "state.json", json.dumps(st))
+    done["pending"] = post_commit(repo) if (repo.cdir / "pending").exists() else 0
+    done["floor"] = _commit_floor(repo)
+    return done
+
+
+def _commit_floor(repo):
+    """Inferred entries for my own commits since init that have no entry yet (covers web-UI/hook-less commits)."""
+    from . import tree
+    base = repo.cfg().get("floor_base")
+    if not base or not g.commit_exists(repo.root, base):
+        return 0
+    email = g.config_get(repo.root, "user.email")
+    rc, out, _ = g.try_run(["log", "--first-parent", "-n50", f"--author={email}", "--format=%H", f"{base}..HEAD"], repo.root)
+    covered = {l.entry.anchor.get("sha") for l in repo.all_entries()}
+    n = 0
+    for sha in (out.split() if rc == 0 else []):
+        if sha in covered:
+            continue
+        info = g.commit_info(repo.root, sha) or {}
+        paths = g.changed_paths(repo.root, sha)
+        body = g.try_run(["show", "-s", "--format=%b", sha], repo.root)[1].strip()
+        layers = sorted({l for l in (tree.layer_of(p) for p in paths) if l})
+        e = Entry(id=new_id(), kind="change", topic=info.get("subject", "")[:200],
+                  body={"summary": info.get("subject", ""), "what": (body + f"\nfiles: {len(paths)}" +
+                                                                     (f" ({', '.join(layers)})" if layers else "")).strip()},
+                  provenance="inferred", captured_via="reconcile", created=now())
+        e.anchor = tree.anchor_for(repo, sha=sha, paths=paths)
+        repo.add_private(e)
+        n += 1
+    return n
