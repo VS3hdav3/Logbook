@@ -11,6 +11,7 @@ os.environ["PYTHONPATH"] = SRC + os.pathsep + os.environ.get("PYTHONPATH", "")  
 os.environ["LOGBOOK_NO_SPAWN"] = "1"  # detached workers would keep temp dirs locked on Windows
 
 from getlogbook import safety  # noqa: E402
+from getlogbook.entry import from_dict, new_id  # noqa: E402
 
 
 def sh(*a, cwd):
@@ -77,3 +78,18 @@ class TestSafety(unittest.TestCase):
             self.assertNotIn(bad, s)
         self.assertIn("ok text", s)
         self.assertLessEqual(len(safety.sanitize("x" * 5000, 500)), 500)
+
+
+class TestEntry(unittest.TestCase):
+    def test_untrusted_input_is_coerced_and_capped(self):
+        with self.assertRaises(ValueError):
+            from_dict({"id": "../../etc/passwd"})
+        e = from_dict({"id": new_id(), "kind": "weird", "topic": "t" * 999, "provenance": "trust-me", "user": "alice", "author": "root",
+                       "body": {"why": "w" * 99999, "evil": "x"}, "anchor": {"paths": ["a"] * 500, "sha": 5}, "supersedes": ["nope"]})
+        self.assertEqual((e.kind, e.provenance), ("finding", "inferred"))
+        self.assertLessEqual(len(e.topic), 200)
+        self.assertLessEqual(len(e.body["why"]), 2000)
+        self.assertNotIn("evil", e.body)
+        self.assertLessEqual(len(e.anchor["paths"]), 40)
+        self.assertEqual(e.supersedes, [])
+        self.assertFalse(hasattr(e, "user"))  # authorship comes from the ref path, never from the file
