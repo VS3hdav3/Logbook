@@ -277,3 +277,64 @@ def cmd_post_commit(a):
     except Exception:
         pass
     return 0
+
+
+def cmd_install_hook(a):
+    r = need_repo()
+    f = capture.uninstall_git_hook(r) if a.remove else capture.install_git_hook(r)
+    out(f"{'removed from' if a.remove else 'installed in'} {f}")
+
+
+def cmd_install(a):
+    r = need_repo()
+    if a.agent != "claude-code":
+        out(f"{a.agent}: no hook adapter yet (tier 2/3). Use `logbook note` from the agent's instructions file; the git floor still applies.")
+        return 0
+    path, cur = capture.install_claude(r, a.path, a.pretool, a.write, a.remove)
+    if a.write:
+        out(f"{'removed from' if a.remove else 'merged into'} {path} (existing hooks preserved)")
+    else:
+        out(json.dumps(cur, indent=2))
+        out(f"\n(dry run: nothing written. Add --write to merge into {path})")
+
+
+def cmd_purge(a):
+    r = need_repo()
+    ref = r.purge(a.id)
+    if not ref:
+        out(f"no published entry {a.id} on your ref (private copy removed if present)")
+        r.drop_private(a.id)
+        return 4
+    out(f"rewrote {ref} without {a.id} and left an id-only tombstone; private copy removed")
+    out("Forks, mirrors and anyone who already fetched may keep a copy. ROTATE ANY SECRET that was in it.")
+    if a.push:
+        out(json.dumps(sync.push(r, force=True)))
+    else:
+        out("run `logbook sync` after `logbook purge --push`, or re-run with --push (it must be a forced push of your own ref)")
+
+
+def cmd_gc(a):
+    r = need_repo()
+    if not a.yes:
+        raise SystemExit("logbook gc squashes your own ref to one commit (loses its commit history). Re-run with --yes.")
+    ref = r.squash_own_ref()
+    out(f"squashed {ref}" if ref else "nothing to squash")
+    if ref and a.push:
+        out(json.dumps(sync.push(r, force=True)))
+
+
+def cmd_trust(a):
+    r = need_repo()
+    c = r.cfg()
+    t = set(c.get("trusted", []))
+    (t.discard if a.remove else t.add)(a.user)
+    c["trusted"] = sorted(t)
+    r.save_cfg(c)
+    pol = r.policy().get("inject_from")
+    out(f"trusted: {', '.join(c['trusted']) or '(none: only your own entries are injected)'}" + (f"\nnote: repo policy inject_from={pol} limits this" if pol == "self" else ""))
+
+
+def cmd_inject(a):
+    r = need_repo()
+    text = recall.digest(r, a.event, a.prompt or "", a.file or [], a.session or "")
+    out(text if text else "(nothing to inject)")
