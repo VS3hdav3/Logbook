@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "getlogbook"
+version = "0.0.1"
+description = "Commit-anchored shared memory for AI-assisted repos (stdlib only)."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+logbook = "getlogbook.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+getlogbook = ["viewer.html"]
