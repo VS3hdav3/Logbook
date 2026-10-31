@@ -156,3 +156,76 @@ def _msg(obj):
     if isinstance(c, list):
         c = " ".join(p.get("text", "") for p in c if isinstance(p, dict) and p.get("type") == "text")
     return role, c.strip() if isinstance(c, str) else ""
+
+
+def _sid(sid):
+    return "".join(c for c in sid if c.isalnum() or c in "-_")[:80] or "nosession"
+
+
+def _load(d):
+    try:
+        st = json.loads((d / "state.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        st = {}
+    st.setdefault("offset", 0)
+    st.setdefault("paths", [])
+    st.setdefault("summarized", 0)
+    return st
+
+
+def _copy_slice(d, st, transcript):
+    if transcript and Path(transcript).is_file():
+        size = Path(transcript).stat().st_size
+        if size < st["offset"]:
+            st["offset"] = 0
+        if size > st["offset"]:
+            with open(transcript, "rb") as f:
+                f.seek(st["offset"])
+                data = f.read()
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f"slice-{st['offset']:012d}.jsonl").write_bytes(data)
+            st["offset"] = size
+
+
+def checkpoint(repo, sid, transcript, paths=(), meta=None):
+    """Copy the transcript bytes added since the last checkpoint. Cheap; safe to call from a hook."""
+    d = repo.cdir / "sessions" / _sid(sid)
+    with _lock(d / ".lock") as got:
+        if not got:
+            return None
+        st = _load(d)
+        _copy_slice(d, st, transcript)
+        st["paths"] = sorted(set(st["paths"]) | set(paths))[:200]
+        st["last"] = time.time()
+        st.update(meta or {})
+        atomic_write(d / "state.json", json.dumps(st))
+        return d, st
+
+
+def _finalize(repo, sid, d, st, agent, head, branch):
+    from . import tree
+    texts = []
+    for sl in sorted(d.glob("slice-*.jsonl")):
+        if int(sl.stem.split("-")[1]) < st["summarized"]:
+            continue
+        for line in sl.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                role, text = _msg(json.loads(line))
+            except ValueError:
+                continue
+            if text:
+                texts.append((role, text))
+    assistant = [t for r, t in texts if r == "assistant"]
+    user = [t for r, t in texts if r == "user"]
+    if not assistant:
+        return None
+    st["summarized"] = st["offset"]
+    first_line = lambda s, n: (s.splitlines() or [""])[0][:n]
+    e = Entry(id=new_id(), kind="finding", topic=(first_line(user[0], 80) if user else f"session {sid[:8]}"),
+              body={"summary": assistant[-1][:300], "what": "\n".join("- " + first_line(a, 120) for a in assistant[:5])},
+              provenance="inferred", captured_via=agent or "agent", created=now())
+    a = tree.anchor_for(repo, sha=head or None, paths=st["paths"][:40], dirty=bool(st["paths"]))
+    a["branch"] = branch or a["branch"]
+    e.anchor = a
+    repo.add_private(e)
+    return e
