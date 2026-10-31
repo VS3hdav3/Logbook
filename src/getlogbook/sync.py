@@ -3,9 +3,10 @@ clobber your own unpushed ref. We never write remote.<r>.push (that would hijack
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from . import git as g
-from .store import BRANCH_PREFIX, PREFIX, REMOTE_NS
+from .store import BRANCH_PREFIX, PREFIX, REMOTE_NS, Repo
 
 
 _REFUSED = re.compile(r"denied|declined|refusing|not permitted|protected|forbidden|403|pre-receive|hook|unable to create", re.I)
@@ -72,3 +73,43 @@ def sync(repo, remote="origin", fetch_only=False, depth=None):
     out["writers"] = len({(l.user, l.device) for l in shared})
     out["entries"] = len(shared)
     return out
+
+
+def doctor(repo, remote="origin"):
+    """List of (level, message). Levels: ok | warn | fail."""
+    r = []
+    ok = lambda m: r.append(("ok", m))
+    warn = lambda m: r.append(("warn", m))
+    c = repo.cfg()
+    if not c.get("user"):
+        r.append(("fail", "not initialised: run `logbook init`"))
+        return r
+    ok(g.run(["version"], repo.root).strip())
+    ok(f"interpreter pinned: {c.get('interpreter')}")
+    ok(f"transport: {c.get('transport', 'refs')}; attribution: {repo.attribution()}")
+    if g.is_shallow(repo.root):
+        warn("shallow clone: anchors to missing commits show as 'unverified' (git fetch --unshallow to fix)")
+    if remote in remotes(repo):
+        have = g.try_run(["config", "--get-all", f"remote.{remote}.fetch"], repo.root)[1]
+        if fetch_specs(remote)[0] in have:
+            ok("fetch refspec present")
+        else:
+            warn(f"fetch refspec missing: run `logbook join` (plain `git fetch` will skip logbook refs)")
+    else:
+        warn(f"no remote named {remote!r}: entries stay local until you add one")
+    hp = g.try_run(["config", "--get", "core.hooksPath"], repo.root)[1].strip()
+    hooks_dir = g.run(["rev-parse", "--path-format=absolute", "--git-path", "hooks"], repo.root).strip()
+    hf = Path(hooks_dir) / "post-commit"
+    if hf.exists() and "logbook" in hf.read_text(encoding="utf-8", errors="ignore"):
+        ok(f"post-commit hook installed ({hooks_dir})")
+    else:
+        warn("post-commit floor not installed: `logbook install-hook` (commits will not be recorded automatically)")
+    if hp:
+        warn(f"core.hooksPath is set ({hp}); hooks are read from there")
+    err = repo.cdir / "errors.log"
+    if err.exists() and err.stat().st_size:
+        warn(f"hook errors logged: {err}")
+    pend = len(list((repo.cdir / "spool").glob("*.json"))) if (repo.cdir / "spool").exists() else 0
+    if pend:
+        warn(f"{pend} spooled hook events not yet processed (run `logbook reconcile`)")
+    return r
