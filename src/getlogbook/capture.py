@@ -302,3 +302,71 @@ def _commit_floor(repo):
         repo.add_private(e)
         n += 1
     return n
+
+
+# ---- installers ---------------------------------------------------------------------------------------------
+def _py(repo):
+    return (repo.cfg().get("interpreter") or sys.executable).replace("\\", "/")
+
+
+def install_git_hook(repo):
+    hooks = Path(g.run(["rev-parse", "--path-format=absolute", "--git-path", "hooks"], repo.root).strip())
+    hooks.mkdir(parents=True, exist_ok=True)
+    f = hooks / "post-commit"
+    block = f'{MARK_BEGIN}\n"{_py(repo)}" -m getlogbook post-commit >/dev/null 2>&1 || true\n{MARK_END}\n'
+    text = f.read_text(encoding="utf-8") if f.exists() else "#!/bin/sh\n"
+    if MARK_BEGIN not in text:  # chain, never overwrite
+        f.write_text(text.rstrip("\n") + "\n" + block, encoding="utf-8", newline="\n")
+    try:
+        f.chmod(f.stat().st_mode | 0o111)
+    except OSError:
+        pass
+    c = repo.cfg()
+    c.setdefault("floor_base", g.head_sha(repo.root) or "")
+    repo.save_cfg(c)
+    return f
+
+
+def uninstall_git_hook(repo):
+    hooks = Path(g.run(["rev-parse", "--path-format=absolute", "--git-path", "hooks"], repo.root).strip())
+    f = hooks / "post-commit"
+    if f.exists() and MARK_BEGIN in f.read_text(encoding="utf-8"):
+        t = f.read_text(encoding="utf-8")
+        a, _, rest = t.partition(MARK_BEGIN)
+        _, _, b = rest.partition(MARK_END)
+        f.write_text((a + b.lstrip("\n")).rstrip("\n") + "\n", encoding="utf-8", newline="\n")
+    return f
+
+
+def claude_snippet(repo, pretool=False):
+    py = _py(repo)
+    mk = lambda ev: [{"hooks": [{"type": "command", "command": f'"{py}" -m getlogbook capture --event {ev} --agent claude-code'}]}]
+    hooks = {ev: mk(ev) for ev in CLAUDE_EVENTS}
+    if pretool:
+        hooks["PreToolUse"] = [{"matcher": "Edit|Write|MultiEdit", **mk("PreToolUse")[0]}]
+    return {"hooks": hooks}
+
+
+def install_claude(repo, path=None, pretool=False, write=False, remove=False):
+    path = Path(path or repo.root / ".claude" / "settings.local.json")  # local: it holds a machine-specific interpreter path
+    try:
+        cur = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        raise SystemExit(f"logbook: {path} is not valid JSON; refusing to touch it")
+    hooks = cur.setdefault("hooks", {})
+    snippet = claude_snippet(repo, pretool)["hooks"]
+    for ev, entries in list(hooks.items()):  # always drop our previous entries so install is idempotent
+        keep = [e for e in entries if "getlogbook capture" not in json.dumps(e)]
+        if keep:
+            hooks[ev] = keep
+        else:
+            del hooks[ev]
+    if not remove:
+        for ev, entries in snippet.items():
+            hooks.setdefault(ev, []).extend(entries)
+    if not hooks:
+        cur.pop("hooks")
+    if write:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(path, json.dumps(cur, indent=2))
+    return path, cur
