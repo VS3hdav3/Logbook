@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import PurePosixPath
 
 from . import git as g
@@ -138,3 +139,75 @@ class Anchorer:
             return self.by_sha[sha]
         rc, out, _ = g.try_run(["rev-list", "--count", f"{sha}..HEAD"], self.repo.root)
         return int(out.strip()) if rc == 0 and out.strip().isdigit() else None
+
+
+def anchor_for(repo, sha=None, paths=None, dirty=None, pr=""):
+    """Snapshot of an anchor. Denormalised on purpose: it must still render when the commit is gone."""
+    head, br, _, is_dirty = g.state(repo.root)
+    sha = sha or head
+    a = {"sha": sha or "", "branch": br, "pr": pr, "dirty": is_dirty if dirty is None else dirty}
+    if sha:
+        info = g.commit_info(repo.root, sha) or {}
+        a.update(tree=info.get("tree", ""), parent=info.get("parent", ""), subject=info.get("subject", ""),
+                 date=info.get("date", ""), patch_id=g.patch_id(repo.root, sha) or "")
+        if paths is None:
+            paths = g.changed_paths(repo.root, sha)
+    a["paths"] = list(paths or [])
+    a["models"] = models_of(a["paths"])
+    return a
+
+
+def renames(repo, limit=SPINE_LIMIT):
+    """old name -> newest name, from rename detection over the first-parent line. Derived cache, heuristic."""
+    d = get_derived(repo)
+    if "renames" in d:
+        return d["renames"]
+    rc, out, _ = g.try_run(["log", "--first-parent", f"-n{limit}", "-M", "--name-status", "--diff-filter=R", "--format="], repo.root)
+    pairs = []  # newest first
+    for line in out.splitlines() if rc == 0 else []:
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[0].startswith("R"):
+            pairs.append((parts[1], parts[2]))
+    alias = {}
+    for old, new in reversed(pairs):  # oldest first, so chains resolve to the latest name
+        for k, v in list(alias.items()):
+            if v == old:
+                alias[k] = new
+        alias[old] = new
+    d["renames"] = alias
+    save_derived(repo)
+    return alias
+
+
+def aliases_for(repo, name):
+    """All historical names for a model (stems), for query expansion."""
+    al = renames(repo)
+    stems = {PurePosixPath(k).stem: PurePosixPath(v).stem for k, v in al.items()}
+    names = {name}
+    for old, new in stems.items():
+        if name in (old, new):
+            names |= {old, new}
+    return names
+
+
+def age_days(created):
+    try:
+        return max(0, int((time.time() - time.mktime(time.strptime(created[:19], "%Y-%m-%dT%H:%M:%S"))) // 86400))
+    except (ValueError, OverflowError):
+        return None
+
+
+def view(repo, loaded, anch):
+    """Flat, JSON-safe dict for one entry (UI and CLI share this)."""
+    e, a = loaded.entry, loaded.entry.anchor
+    sha, state, rung = anch.place(a)
+    behind = anch.behind(sha) if sha else None
+    layers = sorted({l for l in (layer_of(p) for p in a.get("paths", [])) if l} |
+                    {l for l in (layer_of(m) for m in a.get("models", [])) if l})
+    return {"id": e.id, "kind": e.kind, "topic": e.topic, "body": e.body, "provenance": e.provenance,
+            "scope": loaded.scope, "author": repo.label(loaded), "mine": loaded.user == repo.user,
+            "trusted": loaded.user in repo.trusted(), "state": state, "rung": rung, "behind": behind,
+            "age_days": age_days(e.created), "created": e.created, "captured_via": e.captured_via,
+            "branch": a.get("branch", ""), "subject": a.get("subject", ""), "sha": a.get("sha", ""), "placed": sha or "",
+            "paths": a.get("paths", []), "models": a.get("models", []), "layers": layers, "dirty": a.get("dirty", False),
+            "supersedes": e.supersedes, "redacted": e.redacted}
