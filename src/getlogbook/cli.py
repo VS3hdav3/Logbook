@@ -4,8 +4,9 @@ from __future__ import annotations
 import json
 import sys
 
-from . import capture, sync, tree
-from .entry import BODY_FIELDS
+from . import capture, recall, sync, tree
+from . import git as g
+from .entry import BODY_FIELDS, ID_RE
 from .safety import digest_hash, looks_tabular, redact
 from .safety import sanitize as safety_sanitize
 from .store import Repo
@@ -141,3 +142,77 @@ def cmd_publish(a):
     out(f"published {len(ready)} entr{'y' if len(ready) == 1 else 'ies'} to {ref} (local). `logbook sync` pushes it.")
     if a.push:
         out(json.dumps(sync.push(r)))
+
+
+def cmd_sync(a):
+    r = need_repo()
+    res = sync.sync(r, a.remote, a.fetch_only, a.depth)
+    out(json.dumps(res, indent=2))
+    return 0 if res["fetch"]["ok"] and res.get("push", {"ok": True})["ok"] else 1
+
+
+def cmd_query(a):
+    r = need_repo()
+    vs, an = views(r)
+    ranked = recall.rank(r, query=a.q, views=vs, anch=an)[: a.limit]
+    if not ranked:
+        out("no match")
+        return 4
+    for s, v in ranked:
+        out(line(v))
+    return 0
+
+
+def cmd_explain(a):
+    r = need_repo()
+    vs, an = views(r)
+    by_prefix = [v for v in vs if v["id"].startswith(a.target)]
+    if ID_RE.match(a.target) or len(by_prefix) >= 1 and len(a.target) >= 6:
+        if len(by_prefix) > 1:
+            out("ambiguous:")
+            [out("  " + v["id"]) for v in by_prefix]
+            return 3
+        if by_prefix:
+            out(detail(by_prefix[0]))
+            return 0
+    models = {a.target.lower()}
+    cands = {m.lower() for v in vs for m in v["models"] if a.target.lower() in m.lower()}
+    exact = {m for m in cands if m == a.target.lower()}
+    if not exact and len(cands) > 1:
+        out("ambiguous: " + ", ".join(sorted(cands)))
+        return 3
+    if not exact and cands:
+        models = cands
+    ranked = recall.rank(r, models=models, files=[a.target], views=vs, anch=an)
+    if not ranked:
+        out(f"nothing recorded for {a.target}")
+        return 4
+    names = sorted({n for m in models for n in tree.aliases_for(r, m)})
+    if len(names) > 1:
+        out("known under names: " + ", ".join(names) + "  (rename detection is heuristic)")
+    for _, v in ranked:
+        out(detail(v))
+        out("")
+    return 0
+
+
+def cmd_path(a):
+    r = need_repo()
+    rc, o, _ = g.try_run(["rev-list", "--first-parent", "--reverse", f"{a.a}..{a.b}"], r.root)
+    if rc:
+        out("no match: could not resolve both revisions")
+        return 4
+    vs, an = views(r)
+    by = {}
+    for v in vs:
+        by.setdefault(v["placed"], []).append(v)
+    shas = o.split()
+    if not shas:
+        out("no commits between those revisions")
+        return 4
+    for s in shas:
+        info = g.commit_info(r.root, s) or {}
+        out(f"{s[:8]}  {info.get('subject', '')}")
+        for v in by.get(s, []):
+            out("    - " + v["topic"] + f"  [{v['kind']}, {v['author']}]")
+    return 0
