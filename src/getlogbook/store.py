@@ -150,3 +150,74 @@ class Repo:
             return True
         except OSError:
             return False
+
+    def load_private(self):
+        out = []
+        for p in sorted(self.pdir.glob("*.json")) if self.pdir.exists() else []:
+            try:
+                out.append(from_json(p.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                continue
+        return out
+
+    def audit(self, line):
+        with open(self.cdir / "audit.log", "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {line}\n")
+
+    def error(self, line):
+        try:
+            with open(self.cdir / "errors.log", "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {line}\n")
+        except OSError:
+            pass
+
+    # shared log ----------------------------------------------------------
+    def _tree_files(self, ref):
+        """{path: oid} for the tip tree of ref (empty if the ref is missing)."""
+        rc, out, _ = g.try_run(["ls-tree", "-r", "--long", ref], self.root)
+        files = {}
+        if rc:
+            return files
+        for line in out.splitlines():
+            meta, _, path = line.partition("\t")
+            parts = meta.split()
+            if len(parts) == 4 and parts[1] == "blob" and parts[3].isdigit() and int(parts[3]) <= MAX_BLOB:
+                files[path] = parts[2]
+        return files
+
+    def _write_ref(self, ref, files, message, parent):
+        """Create a commit whose tree is exactly `files` ({path: bytes_or_oid}) and point `ref` at it."""
+        idx = self.cdir / f"tmp-index-{os.getpid()}-{os.urandom(2).hex()}"
+        env = {"GIT_INDEX_FILE": str(idx), "GIT_AUTHOR_NAME": "logbook", "GIT_AUTHOR_EMAIL": "logbook@localhost",
+               "GIT_COMMITTER_NAME": "logbook", "GIT_COMMITTER_EMAIL": "logbook@localhost"}
+        try:
+            lines = []
+            for path, val in sorted(files.items()):
+                oid = val if isinstance(val, str) else g.run(["hash-object", "-w", "--stdin"], self.root, input=val).strip()
+                lines.append(f"100644 {oid}\t{path}\n")
+            g.run(["update-index", "--index-info"], self.root, input="".join(lines), env=env) if lines else None
+            tree = g.run(["write-tree"], self.root, env=env).strip() if lines else \
+                g.run(["hash-object", "-t", "tree", "-w", "--stdin"], self.root, input=b"").strip()
+            args = ["commit-tree", tree, "-m", message] + (["-p", parent] if parent else [])
+            commit = g.run(args, self.root, env=env).strip()
+            g.run(["update-ref", ref, commit], self.root)
+            return commit
+        finally:
+            try:
+                idx.unlink()
+            except OSError:
+                pass
+
+    def publish(self, entries):
+        ref = self.own_ref()
+        tip = g.try_run(["rev-parse", "--verify", "-q", ref], self.root)[1].strip() or None
+        files = self._tree_files(ref) if tip else {}
+        for e in entries:
+            data = e.to_json().encode("utf-8")
+            if len(data) > self.policy()["max_entry_bytes"]:
+                raise ValueError(f"entry {e.id} is {len(data)} bytes; policy max is {self.policy()['max_entry_bytes']}")
+            files[f"entries/{e.id}.json"] = data
+        self._write_ref(ref, files, f"logbook: +{len(entries)} entries", tip)
+        for e in entries:
+            self.audit(f"publish {e.id} -> {ref}")
+        return ref
