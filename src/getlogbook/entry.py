@@ -53,3 +53,33 @@ class Entry:
         a = self.anchor
         parts += [a.get("subject", ""), a.get("branch", ""), *a.get("paths", []), *a.get("models", [])]
         return " ".join(p for p in parts if p)
+
+
+def _s(v, n=MAX_FIELD):
+    return v[:n] if isinstance(v, str) else ""
+
+
+def _strs(v):
+    return [_s(x, 300) for x in v[:MAX_LIST] if isinstance(x, str)] if isinstance(v, list) else []
+
+
+def from_dict(d):
+    """Build an Entry from untrusted data: coerce types, cap sizes, reject bad ids."""
+    if not isinstance(d, dict) or not isinstance(d.get("id"), str) or not ID_RE.match(d["id"]):
+        raise ValueError("bad entry")
+    body = d.get("body") if isinstance(d.get("body"), dict) else {}
+    a = d.get("anchor") if isinstance(d.get("anchor"), dict) else {}
+    anchor = {k: _s(a.get(k), 300) for k in ("sha", "tree", "parent", "patch_id", "branch", "subject", "date", "pr")}
+    anchor.update(paths=_strs(a.get("paths")), models=_strs(a.get("models")), old_paths=_strs(a.get("old_paths")),
+                  dirty=bool(a.get("dirty")))
+    kind = d.get("kind") if d.get("kind") in KINDS else "finding"
+    prov = d.get("provenance") if d.get("provenance") in PROVENANCE else "inferred"
+    return Entry(id=d["id"], kind=kind, topic=_s(d.get("topic"), 200),
+                 body={k: _s(body.get(k), 600 if k == "summary" else MAX_FIELD) for k in BODY_FIELDS if body.get(k)},
+                 anchor=anchor, provenance=prov, captured_via=_s(d.get("captured_via"), 40),
+                 supersedes=[x for x in _strs(d.get("supersedes")) if ID_RE.match(x)],
+                 display=_s(d.get("display"), 60), created=_s(d.get("created"), 40), redacted=bool(d.get("redacted")))
+
+
+def from_json(text):
+    return from_dict(json.loads(text))
