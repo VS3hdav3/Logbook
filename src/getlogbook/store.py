@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from . import git as g
+from .entry import from_json
 
 PREFIX = "refs/logbook/log"
 REMOTE_NS = "refs/logbook-remote"
@@ -83,3 +84,69 @@ class Repo:
         for d in ("private", "sessions", "spool", "seen"):
             (self.cdir / d).mkdir(parents=True, exist_ok=True)
         return c
+
+    @property
+    def user(self):
+        return self.cfg().get("user", "")
+
+    @property
+    def device(self):
+        return self.cfg().get("device", "")
+
+    def policy(self):
+        """Repo policy (tracked file, owner-controlled). Only ever *restricts* the client."""
+        p = dict(DEFAULT_POLICY)
+        try:
+            p.update(json.loads((self.root / ".logbook" / "policy.json").read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            pass
+        return p
+
+    def attribution(self):
+        order = ["none", "pseudonym", "named"]  # policy sets the ceiling
+        want = self.cfg().get("attribution", "pseudonym")
+        cap = self.policy().get("attribution", "pseudonym")
+        return order[min(order.index(want) if want in order else 1, order.index(cap) if cap in order else 1)]
+
+    def committers(self):
+        """Ids of people with commits on this branch's first-parent line (set for free by the Anchorer, else one git log)."""
+        if getattr(self, "_committers", None) is None:
+            out = g.try_run(["log", "--first-parent", "-n500", "--format=%ae"], self.root)[1]
+            self._committers = {user_id(e) for e in out.split() if e.strip()}
+        return self._committers
+
+    def trusted(self):
+        """Whose notes may be injected into an agent's context. Storage, search and the viewer cover everyone regardless.
+        Default: you, anyone with a commit on this line of history, and anyone you ran `trust` on.
+        policy inject_from=self narrows it to you; cfg trust_committers=false turns the committer rule off."""
+        t = {self.user}
+        if self.policy().get("inject_from") != "self":
+            t |= set(self.cfg().get("trusted", []))
+            if self.cfg().get("trust_committers", True):
+                t |= self.committers()
+        return t
+
+    def own_ref(self):
+        base = BRANCH_PREFIX if self.cfg().get("transport") == "branches" else PREFIX
+        return f"{base}/{self.user}/{self.device}"
+
+    # private log ---------------------------------------------------------
+    @property
+    def pdir(self):
+        return self.cdir / "private"
+
+    def add_private(self, e):
+        atomic_write(self.pdir / f"{e.id}.json", e.to_json())
+
+    def get_private(self, eid):
+        try:
+            return from_json((self.pdir / f"{eid}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def drop_private(self, eid):
+        try:
+            (self.pdir / f"{eid}.json").unlink()
+            return True
+        except OSError:
+            return False
