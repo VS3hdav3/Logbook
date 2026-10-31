@@ -1,6 +1,7 @@
 """logbook CLI. Exit codes for scripts: 0 found, 3 ambiguous (candidates listed), 4 nothing matched."""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 
@@ -372,3 +373,99 @@ def cmd_serve(a):
 def cmd_demo(a):
     from . import demo
     return demo.run(a.dir, a.serve)
+
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="logbook", description="Commit-anchored shared memory for AI-assisted repos.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    def add(name, fn, help="", **_):
+        sp = sub.add_parser(name, help=help)
+        sp.set_defaults(fn=fn)
+        return sp
+
+    s = add("init", cmd_init, "create your id and config")
+    s.add_argument("--attribution", choices=["none", "pseudonym", "named"])
+    s = add("join", cmd_join, "init + fetch teammates' entries (run this after cloning)")
+    s.add_argument("--remote", default="origin")
+    s = add("note", cmd_note, "record a finding or change in your private log")
+    s.add_argument("--kind", choices=["finding", "change"], default="finding")
+    s.add_argument("--topic")
+    for k in BODY_FIELDS:
+        s.add_argument(f"--{k}")
+    s.add_argument("--paths", help="comma-separated; defaults to the commit's files / working tree")
+    s.add_argument("--before-commit", action="store_true", help="change entry: attach to the next commit")
+    s.add_argument("--from-stdin", action="store_true", help="read the summary from stdin (for agents without hooks)")
+    s = add("publish", cmd_publish, "share private entries (preview + redaction, per entry)")
+    s.add_argument("ids", nargs="+")
+    s.add_argument("--yes", action="store_true")
+    s.add_argument("--push", action="store_true")
+    s.add_argument("--include-evidence", action="store_true")
+    s.add_argument("--allow-table", action="store_true")
+    s = add("sync", cmd_sync, "fetch teammates' entries and push yours")
+    s.add_argument("--remote", default="origin")
+    s.add_argument("--fetch-only", action="store_true")
+    s.add_argument("--depth", type=int)
+    s = add("query", cmd_query, "search entries")
+    s.add_argument("q")
+    s.add_argument("--limit", type=int, default=10)
+    s = add("explain", cmd_explain, "everything known about an entry id, a model, or a path")
+    s.add_argument("target")
+    s = add("path", cmd_path, "commits (with their entries) between two revisions")
+    s.add_argument("a")
+    s.add_argument("b")
+    add("status", cmd_status, "what is recorded and what is captured")
+    s = add("doctor", cmd_doctor, "check setup and capture coverage")
+    s.add_argument("--remote", default="origin")
+    s = add("reconcile", cmd_reconcile, "process spooled events, recover sessions, record uncovered commits")
+    s.add_argument("--quiet", action="store_true")
+    s = add("capture", cmd_capture, "hook entry point (reads JSON on stdin; never fails)")
+    s.add_argument("--event", required=True)
+    s.add_argument("--agent", default="")
+    add("post-commit", cmd_post_commit, "git hook entry point")
+    s = add("install-hook", cmd_install_hook, "chain a post-commit hook (never overwrites yours)")
+    s.add_argument("--remove", action="store_true")
+    s = add("install", cmd_install, "install agent hooks (dry run unless --write)")
+    s.add_argument("--agent", default="claude-code")
+    s.add_argument("--write", action="store_true")
+    s.add_argument("--remove", action="store_true")
+    s.add_argument("--pretool", action="store_true", help="also inject before edits")
+    s.add_argument("--path")
+    s = add("purge", cmd_purge, "remove a published entry from your ref")
+    s.add_argument("id")
+    s.add_argument("--push", action="store_true")
+    s = add("gc", cmd_gc, "squash your own ref")
+    s.add_argument("--yes", action="store_true")
+    s.add_argument("--push", action="store_true")
+    s = add("trust", cmd_trust, "allow a writer's entries to be injected into your agent")
+    s.add_argument("user")
+    s.add_argument("--remove", action="store_true")
+    s = add("inject", cmd_inject, "show what would be injected")
+    s.add_argument("--event", default="UserPromptSubmit")
+    s.add_argument("--prompt")
+    s.add_argument("--file", action="append")
+    s.add_argument("--session")
+    add("stats", cmd_stats, "injection and cost counters")
+    add("snippet", cmd_snippet, "text to paste into CLAUDE.md / AGENTS.md / copilot-instructions for agents without hooks")
+    s = add("serve", cmd_serve, "live local viewer on 127.0.0.1")
+    s.add_argument("--port", type=int, default=0)
+    s.add_argument("--open", action="store_true")
+    s = add("demo", cmd_demo, "build a scratch two-person team and walk through it")
+    s.add_argument("--dir")
+    s.add_argument("--serve", action="store_true")
+    return p
+
+
+def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+    a = build_parser().parse_args(argv)
+    try:
+        rc = a.fn(a)
+    except g.GitError as ex:
+        print(f"logbook: {ex}", file=sys.stderr)
+        return 1
+    return rc or 0

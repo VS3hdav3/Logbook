@@ -5,3 +5,7 @@ if len(sys.argv) > 1 and sys.argv[1] in ("capture", "post-commit"):
     from .hookmain import run
 
     raise SystemExit(run(sys.argv[1:]))
+
+from .cli import main
+
+raise SystemExit(main())
