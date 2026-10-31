@@ -10,11 +10,12 @@ import hmac
 import json
 import re
 import secrets
-from http.server import BaseHTTPRequestHandler
+import webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from urllib.parse import parse_qs, urlparse
 
-from . import recall, tree
+from . import capture, recall, tree
 from . import git as g
 
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
@@ -101,3 +102,25 @@ def make_handler(repo, token, port):
         do_PUT = do_DELETE = do_PATCH = do_POST
 
     return H
+
+
+def serve(repo, port=0, open_browser=False):
+    try:
+        capture.reconcile(repo)  # one sweep on open: crash recovery + commits that had no hook
+    except Exception as ex:
+        repo.error(f"serve reconcile: {ex!r}")
+    token = secrets.token_urlsafe(24)
+    srv = ThreadingHTTPServer(("127.0.0.1", port), lambda *a, **k: None)
+    real = srv.server_address[1]
+    srv.RequestHandlerClass = make_handler(repo, token, real)
+    url = f"http://127.0.0.1:{real}/?t={token}"
+    print(f"logbook viewer (loopback only, read-only): {url}", flush=True)  # flush: callers read this through a pipe
+    print("Ctrl+C to stop.", flush=True)
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        srv.server_close()
