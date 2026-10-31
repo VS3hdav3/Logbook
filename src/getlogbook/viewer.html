@@ -37,3 +37,49 @@ p.f{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}pre{white-space:pre-wra
 </header>
 <div id="status">loading…</div>
 <main><section id="left" aria-label="History"></section><section id="right" aria-label="Detail"><p class="muted">Pick an entry to see what was wrong, why, and what fixed it.</p></section></main>
+<script nonce="{{NONCE}}">
+"use strict";
+const $=s=>document.querySelector(s);
+function h(tag,attrs,...kids){const e=document.createElement(tag);for(const k in attrs||{}){if(k==='class')e.className=attrs[k];else if(k.startsWith('on'))e.addEventListener(k.slice(2),attrs[k]);else e.setAttribute(k,attrs[k]);}
+  for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)));}return e;}
+let TREE=null,SEL=null,VER=null,RESULTS=null;
+const filt=v=>{const k=$('#kind').value,s=$('#scope').value;return (!k||v.kind===k)&&(!s||(s==='mine'?v.mine:v.scope===s));};
+function anchorBadge(v){
+  const m={exact:['ok','anchor ok'],rewritten:['warn','re-anchored by '+v.rung],orphaned:['bad','anchor commit gone'],unknown:['warn','anchor unverified (shallow clone)'],unanchored:['warn','no commit']}[v.state];
+  return h('span',{class:'b '+m[0]},m[1]+(v.behind!=null&&v.state!=='unknown'?', '+v.behind+' behind HEAD':''));
+}
+function badges(v){return [h('span',{class:'b '+v.kind},v.kind),h('span',{class:'b '+(v.provenance==='inferred'?'warn':'')},v.provenance),
+  h('span',{class:'b'},v.scope==='private'?'private, unpublished':'shared'),h('span',{class:'b'},'by '+v.author),
+  !v.trusted&&h('span',{class:'b warn'},'not trusted: never auto-injected'),anchorBadge(v),v.age_days!=null&&h('span',{class:'b'},v.age_days+'d old')];}
+function row(v){
+  const r=h('a',{class:'row'+(SEL===v.id?' sel':'')+(v.scope==='private'?' priv':''),tabindex:'0',role:'button',
+    onclick:()=>select(v.id),onkeydown:e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(v.id);}}},
+    v.layers.map(l=>h('i',{class:'dot '+l,title:l})),h('strong',{},v.topic||'(untitled)'),' ',h('span',{class:'muted'},v.kind+' · '+v.author+(v.score!=null?' · score '+v.score:'')));
+  return r;
+}
+function renderTree(){
+  const L=$('#left');L.replaceChildren();
+  if(RESULTS){
+    const groups={};RESULTS.filter(filt).forEach(v=>{const g=v.layers[0]||'other';(groups[g]=groups[g]||[]).push(v);});
+    const order=['raw','staging','intermediate','mart','other'];
+    if(!RESULTS.length)L.append(h('p',{class:'muted'},'Nothing recorded for that. Silence here means no one wrote anything down, not that nothing is wrong.'));
+    order.filter(g=>groups[g]).forEach(g=>L.append(h('h3',{},g),groups[g].map(row)));return;}
+  if(!TREE)return;
+  const mk=(c)=>{const es=c.entries.filter(filt);if(!es.length&&c.entries.length)return null;
+    return h('details',{open:es.length?'':null},h('summary',{},h('span',{class:'sha'},c.short),c.subject,' ',c.layers.map(l=>h('i',{class:'dot '+l})),es.length?h('span',{class:'b'},es.length+''):''),es.map(row));};
+  L.append(h('h3',{},'branch '+TREE.branch),TREE.commits.map(mk));
+  TREE.unplaced.forEach(g=>{const es=g.entries.filter(filt);if(es.length)L.append(h('h3',{},'branch '+g.branch+' (commits not on this line)'),es.map(row));});
+}
+async function select(id){
+  SEL=id;renderTree();
+  const all=RESULTS||[...TREE.commits.flatMap(c=>c.entries),...TREE.unplaced.flatMap(g=>g.entries)];
+  const v=all.find(x=>x.id===id);const R=$('#right');R.replaceChildren();if(!v)return;
+  R.append(h('h2',{},v.topic||'(untitled)'),h('div',{},badges(v)));
+  ['summary','what','why','wrong','fix','evidence'].forEach(k=>{if(v.body[k])R.append(h('h3',{},k==='wrong'?'how it was wrong':k),h('p',{class:'f'},v.body[k]));});
+  if(v.models.length)R.append(h('h3',{},'models'),v.models.map(m=>h('span',{class:'chip'},m)));
+  if(v.paths.length)R.append(h('h3',{},'files'),v.paths.slice(0,30).map(p=>h('span',{class:'chip'},p)));
+  if(v.sha){const out=h('pre',{class:'muted'},'');out.hidden=true;
+    R.append(h('h3',{},'commit '+v.sha.slice(0,8)),h('p',{class:'f muted'},v.subject),
+      h('button',{onclick:async()=>{if(!out.hidden){out.hidden=true;return;}const r=await fetch('/api/commit/'+v.sha);const j=await r.json();out.textContent=j.text||j.error;out.hidden=false;}},'show commit'),out);}
+  R.append(h('p',{class:'muted'},'Notes are written by people or agents. Verify against the code before relying on them.'));
+}
