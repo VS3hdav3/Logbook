@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 from . import git as g
-from .entry import from_json
+from .entry import from_dict, from_json
 
 PREFIX = "refs/logbook/log"
 REMOTE_NS = "refs/logbook-remote"
@@ -221,3 +221,71 @@ class Repo:
         for e in entries:
             self.audit(f"publish {e.id} -> {ref}")
         return ref
+
+    def purge(self, eid, reason="author request"):
+        """Rewrite own ref as a parentless commit without the entry; leave an id-only tombstone."""
+        ref = self.own_ref()
+        files = self._tree_files(ref)
+        if f"entries/{eid}.json" not in files:
+            return None
+        del files[f"entries/{eid}.json"]
+        files[f"tombstones/{eid}.json"] = json.dumps({"id": eid, "reason": reason[:100], "date": time.strftime("%Y-%m-%d")}).encode()
+        self._write_ref(ref, files, f"logbook: purge {eid}", None)
+        self.drop_private(eid)
+        self.audit(f"purge {eid} {ref}")
+        return ref
+
+    def squash_own_ref(self):
+        """Parentless commit with the same tree (gc). Caller force-pushes with lease."""
+        ref = self.own_ref()
+        files = self._tree_files(ref)
+        if not files:
+            return None
+        self._write_ref(ref, files, "logbook: squash", None)
+        return ref
+
+    def refs(self):
+        return [r for _, r in self.ref_tips()]
+
+    def ref_tips(self):
+        out = g.try_run(["for-each-ref", "--format=%(objectname) %(refname)", "refs/logbook", REMOTE_NS, "refs/heads/logbook"], self.root)[1]
+        return [tuple(l.split(" ", 1)) for l in out.splitlines() if " " in l and _REF_RE.search(l)]
+
+    def load_shared(self):
+        """Parsed shared entries, cached on disk keyed by every ref tip (a hook should not re-read every blob)."""
+        tips = self.ref_tips()
+        key = hashlib.sha1("\n".join(f"{o} {r}" for o, r in tips).encode()).hexdigest()
+        cache = self.cdir / "shared-cache.json"
+        try:
+            c = json.loads(cache.read_text(encoding="utf-8"))
+            if c.get("key") == key and c.get("v") == 1:
+                return [Loaded(from_dict(d), "shared", u, dev, ref) for d, u, dev, ref in c["entries"]], {tuple(t) for t in c["tombs"]}
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        loaded, tombs = self._load_shared_uncached([r for _, r in tips])
+        try:
+            atomic_write(cache, json.dumps({"v": 1, "key": key, "entries": [[l.entry.to_dict(), l.user, l.device, l.ref] for l in loaded],
+                                            "tombs": sorted(tombs)}))
+        except OSError:
+            pass
+        return loaded, tombs
+
+    def _load_shared_uncached(self, refs):
+        loaded, tombs = [], set()
+        for ref in refs:
+            m = _REF_RE.search(ref)
+            files = self._tree_files(ref)
+            ents = {p: o for p, o in files.items() if p.startswith("entries/") and p.endswith(".json")}
+            blobs = g.cat_blobs(self.root, list(ents.values())[:MAX_PER_REF])
+            for path, oid in list(ents.items())[:MAX_PER_REF]:
+                try:
+                    e = from_json(blobs[oid].decode("utf-8"))
+                except (KeyError, ValueError, UnicodeDecodeError):
+                    continue
+                if path != f"entries/{e.id}.json":
+                    continue
+                loaded.append(Loaded(e, "shared", m.group(1), m.group(2), ref))
+            for path, oid in files.items():
+                if path.startswith("tombstones/"):
+                    tombs.add((m.group(1), path[len("tombstones/"):-len(".json")]))
+        return loaded, tombs
