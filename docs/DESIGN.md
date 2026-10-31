@@ -33,3 +33,33 @@ and hooks took 0.5-1.25 s because of ~190 ms of imports and 9-10 `git` subproces
 One panel suggestion I rejected: "default to orphan branches" (a senior-advisor view). You chose refs, and branches show in
 branch lists and can trigger CI, so branches are only the reactive fallback.
 
+## Failure modes
+
+| Case | Behaviour | Status |
+|---|---|---|
+| Shallow clone / CI | refs fetched at depth 1 (tip tree holds all entries); missing anchor commit renders "unverified" | tested |
+| Host refuses `refs/logbook/*` | push falls back to `refs/heads/logbook/log/...`, remembered in config; readers handle both | tested with a pre-receive hook. **Fallback branches show in branch lists and may trigger CI on push: add a CI filter such as `branches-ignore: logbook/**`** |
+| Two clones, same device id | push is rejected as diverged and reported; fix = re-`init` on one clone | message tested indirectly only |
+| Squash merge / cherry-pick / rebase | ladder rungs; unresolved entries stay under their branch node | rungs tested; real GitHub squash messages not tested |
+| Renamed model | `git log -M` over the first-parent line, both names resolve | tested for a simple rename; heavy edits + rename will be missed |
+| Hostile entry | untrusted: searchable, never injected; trusted: sanitised; viewer: `textContent` + CSP | tested with fixtures |
+| Leaked secret | `purge --push`; forks/mirrors may keep copies; rotate | tested locally |
+| Agent without hooks | `logbook snippet` + `note`; git floor records commits as `inferred` | floor tested; snippet not tested with a real agent |
+| Concurrent sessions | per-session lock file, unique entry ids, atomic replace with retry | lock logic tested lightly |
+| Hook budget | spool + detached spawn; `SessionEnd` default budget is 1.5 s | measured on this Windows machine (median of 7, `python -m getlogbook capture` from a clean venv): `Stop` 355 ms, `SessionEnd` 352 ms, `UserPromptSubmit` 560 ms (was 540 / 563 / 1,252 ms before lean imports, batched git calls and a per-HEAD cache). **Not measured inside a real Claude Code session or on macOS/Linux.** About 80 ms is bare interpreter start and each `git` call costs ~45 ms |
+| Push permissions | Any writer with push access can write any `refs/logbook/log/<anyone>/...` path. Clients cannot prevent it; the trust list limits the damage; only the host can enforce one-writer-per-ref | documented limit |
+
+## Not verified
+
+- Claude Code's real transcript JSONL schema (the parser is tolerant and only tested on a hand-made fixture) and real hook payloads.
+- GitHub / GitLab / Bitbucket / Azure behaviour with custom refs; Copilot, Codex, Cursor, Gemini hook formats.
+- Anything on macOS/Linux. `os.replace` retry and detached-process flags are written for Windows quirks but only run on Windows.
+- Whether agents actually use injected notes (no hit-rate measurement exists).
+- `retention_days`, signed commits, GDPR-grade erasure, legal hold: not built.
+
+## Next steps (not started)
+
+1. Run `logbook install --agent claude-code --write` in a throwaway repo with a real Claude Code session; capture real payloads and transcripts as golden fixtures.
+2. Push to a private GitHub repo and test: custom ref push, squash-merge PR number re-anchoring, CI fetch step.
+3. dbt layer: reuse Lodestone's categorizer (this module already has `layer_of`), then join entries to column lineage once that exists.
+4. Decide the real name and whether this is its own repo (recommended) or a subpackage of Lodestone.
