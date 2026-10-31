@@ -83,3 +83,19 @@ async function select(id){
       h('button',{onclick:async()=>{if(!out.hidden){out.hidden=true;return;}const r=await fetch('/api/commit/'+v.sha);const j=await r.json();out.textContent=j.text||j.error;out.hidden=false;}},'show commit'),out);}
   R.append(h('p',{class:'muted'},'Notes are written by people or agents. Verify against the code before relying on them.'));
 }
+async function loadTree(){
+  const r=await fetch('/api/tree');TREE=await r.json();
+  $('#status').textContent=TREE.entry_count+' entries · branch '+TREE.branch+(TREE.shallow?' · shallow clone: some anchors unverified':'')+' · private entries have a dashed outline and are visible only to you';
+  if(!RESULTS)renderTree();
+}
+async function search(){
+  const q=$('#q').value.trim();if(!q){RESULTS=null;renderTree();return;}
+  const r=await fetch('/api/search?q='+encodeURIComponent(q));RESULTS=await r.json();renderTree();
+}
+async function poll(){try{const r=await fetch('/api/version');const j=await r.json();if(j.v!==VER){VER=j.v;await loadTree();if($('#q').value.trim())await search();}}catch(e){$('#status').textContent='viewer lost contact with the local server';}}
+$('#q').addEventListener('input',()=>{clearTimeout(window._t);window._t=setTimeout(search,200);});
+$('#kind').addEventListener('change',renderTree);$('#scope').addEventListener('change',renderTree);
+poll();setInterval(poll,3000);
+</script>
+</body>
+</html>
