@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -11,7 +12,7 @@ sys.path.insert(0, SRC)
 os.environ["PYTHONPATH"] = SRC + os.pathsep + os.environ.get("PYTHONPATH", "")  # hooks spawn `python -m getlogbook`
 os.environ["LOGBOOK_NO_SPAWN"] = "1"  # detached workers would keep temp dirs locked on Windows
 
-from getlogbook import capture, safety, sync, tree  # noqa: E402
+from getlogbook import capture, recall, safety, sync, tree  # noqa: E402
 from getlogbook import git as g  # noqa: E402
 from getlogbook.entry import from_dict, new_id  # noqa: E402
 from getlogbook.store import Repo  # noqa: E402
@@ -193,3 +194,87 @@ class TestAnchor(Base):
         self.assertEqual(tree.layer_of("models/marts/x.sql"), "mart")
         self.assertEqual(tree.layer_of("stg_orders"), "staging")
         self.assertEqual(sha, an.sp[0]["sha"])
+
+
+class TestCapture(Base):
+    def repo(self):
+        d = make_repo(self.root, "r", "a@x.io")
+        commit(d, "base", {"models/marts/fct_x.sql": "select 1\n"})
+        r = Repo(d)
+        r.init()
+        return d, r
+
+    def test_hook_never_raises_and_is_fast(self):
+        d, r = self.repo()
+        t0 = time.time()
+        for raw in ("", "not json", "[]", json.dumps({"cwd": str(self.root / "missing")}), json.dumps({"cwd": str(d), "session_id": "s1"})):
+            capture.handle_hook("Stop", "claude-code", raw)
+        self.assertLess(time.time() - t0, 5)
+        self.assertEqual(len(list((r.cdir / "spool").glob("*.json"))), 1)
+        self.assertEqual(capture.handle_hook("Stop", "x", json.dumps({"cwd": str(self.root)})), "")  # not a repo
+
+    def test_session_start_injects_only_trusted_why_entries(self):
+        d, r = self.repo()
+        capture.make_entry(r, "finding", "x late", {"summary": "s", "why": "export stalled", "wrong": "low"}, paths=["models/marts/fct_x.sql"])
+        capture.make_entry(r, "finding", "no reason", {"summary": "s"}, paths=["models/marts/fct_x.sql"])
+        (d / "models/marts/fct_x.sql").write_text("select 3\n")
+        out = json.loads(capture.handle_hook("SessionStart", "claude-code", json.dumps({"cwd": str(d), "session_id": "s9"})))
+        txt = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("export stalled", txt)
+        self.assertNotIn("no reason", txt)
+        self.assertLessEqual(len(txt), recall.DEFAULT_CAP)
+
+    def test_reconcile_builds_inferred_draft_from_transcript_and_commit_floor(self):
+        d, r = self.repo()
+        capture.install_git_hook(r)
+        tr = self.root / "t.jsonl"
+        tr.write_text("\n".join(json.dumps(x) for x in [
+            {"type": "user", "message": {"role": "user", "content": "why is fct_x low?"}},
+            {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Because the load was late."}]}}]))
+        for ev in ("Stop", "SessionEnd"):
+            capture.spool_event(r, ev, "claude-code", {"session_id": "sess1", "transcript_path": str(tr)})
+        tr.unlink()  # agents prune transcripts: the slice must already be copied
+        commit(d, "hook-less commit", {"models/marts/fct_x.sql": "select 4\n"})
+        res = capture.reconcile(r)
+        self.assertEqual(res["drafts"], 1)
+        self.assertEqual(res["floor"], 1)
+        es = {l.entry.captured_via: l.entry for l in r.load_private() and r.all_entries()}
+        self.assertEqual(es["claude-code"].provenance, "inferred")
+        self.assertIn("why is fct_x low", es["claude-code"].topic)
+        self.assertEqual(es["reconcile"].kind, "change")
+        self.assertEqual(capture.reconcile(r)["floor"], 0, "idempotent")
+
+    def test_real_post_commit_hook_attaches_pending_entry(self):
+        d, r = self.repo()
+        capture.install_git_hook(r)
+        capture.make_entry(r, "change", "t", {"summary": "s", "why": "w"}, pending=True)
+        commit(d, "real", {"models/marts/fct_x.sql": "select 5\n"})
+        time.sleep(0.5)
+        got = [l.entry for l in r.all_entries() if l.entry.kind == "change"]
+        self.assertTrue(got and got[0].anchor["sha"] == g.head_sha(d), "the git hook ran `python -m getlogbook post-commit`")
+
+    def test_installers_chain_and_are_idempotent(self):
+        d, r = self.repo()
+        hooks = Path(g.run(["rev-parse", "--path-format=absolute", "--git-path", "hooks"], d).strip())
+        hooks.mkdir(exist_ok=True)
+        (hooks / "post-commit").write_text("#!/bin/sh\necho mine\n", newline="\n")
+        capture.install_git_hook(r)
+        capture.install_git_hook(r)
+        t = (hooks / "post-commit").read_text()
+        self.assertEqual(t.count(capture.MARK_BEGIN), 1)
+        self.assertIn("echo mine", t)
+        capture.uninstall_git_hook(r)
+        self.assertNotIn("logbook", (hooks / "post-commit").read_text())
+        self.assertIn("echo mine", (hooks / "post-commit").read_text())
+        p = d / ".claude" / "settings.local.json"
+        p.parent.mkdir()
+        p.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo other"}]}]}, "model": "x"}))
+        for _ in range(2):
+            capture.install_claude(r, write=True)
+        cur = json.loads(p.read_text())
+        self.assertEqual(cur["model"], "x")
+        self.assertEqual(sum("getlogbook capture" in json.dumps(e) for e in cur["hooks"]["Stop"]), 1)
+        self.assertTrue(any("echo other" in json.dumps(e) for e in cur["hooks"]["Stop"]))
+        capture.install_claude(r, write=True, remove=True)
+        self.assertNotIn("logbook", p.read_text())
+        self.assertIn("echo other", p.read_text())
