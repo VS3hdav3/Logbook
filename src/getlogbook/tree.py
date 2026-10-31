@@ -211,3 +211,30 @@ def view(repo, loaded, anch):
             "branch": a.get("branch", ""), "subject": a.get("subject", ""), "sha": a.get("sha", ""), "placed": sha or "",
             "paths": a.get("paths", []), "models": a.get("models", []), "layers": layers, "dirty": a.get("dirty", False),
             "supersedes": e.supersedes, "redacted": e.redacted}
+
+
+def all_views(repo):
+    """(views of every visible entry, the Anchorer used). Primed so placing N entries costs O(1) subprocesses."""
+    anch = Anchorer(repo)
+    loaded = repo.all_entries()
+    anch.prime([l.entry.anchor.get("sha", "") for l in loaded])
+    return [view(repo, l, anch) for l in loaded], anch
+
+
+def build(repo):
+    views, anch = all_views(repo)
+    by_commit, loose = {}, {}
+    for v in views:
+        if v["placed"] in anch.by_sha:
+            by_commit.setdefault(v["placed"], []).append(v)
+        else:
+            loose.setdefault(v["branch"] or "(no branch)", []).append(v)
+    commits = []
+    for c in anch.sp:
+        ents = sorted(by_commit.get(c["sha"], []), key=lambda v: v["id"])
+        if ents or len(commits) < 30:
+            commits.append({**c, "short": c["sha"][:8], "entries": ents,
+                            "layers": sorted({l for v in ents for l in v["layers"]})})
+    loose_list = [{"branch": b, "entries": sorted(es, key=lambda v: v["id"])} for b, es in sorted(loose.items())]
+    return {"head": g.head_sha(repo.root) or "", "branch": g.branch(repo.root), "shallow": anch.shallow,
+            "me": repo.user, "commits": commits, "unplaced": loose_list, "entry_count": len(views)}
