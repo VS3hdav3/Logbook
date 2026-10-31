@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 from . import git as g
-from .entry import from_dict, from_json
+from .entry import Entry, from_dict, from_json
 
 PREFIX = "refs/logbook/log"
 REMOTE_NS = "refs/logbook-remote"
@@ -289,3 +289,27 @@ class Repo:
                 if path.startswith("tombstones/"):
                     tombs.add((m.group(1), path[len("tombstones/"):-len(".json")]))
         return loaded, tombs
+
+    def all_entries(self):
+        """Shared (merged at read time, deduped by id) + private overlay. Superseded/purged entries are hidden."""
+        shared, tombs = self.load_shared()
+        by_id = {}
+        for l in shared:
+            if (l.user, l.entry.id) in tombs:
+                continue
+            by_id.setdefault(l.entry.id, l)
+        me = self.user
+        for e in self.load_private():
+            by_id.setdefault(e.id, Loaded(e, "private", me, self.device, ""))
+        # only the same author may supersede (hide) an entry, so a hostile writer cannot hide others' work
+        hidden = {s for l in by_id.values() for s in l.entry.supersedes if by_id.get(s) and by_id[s].user == l.user}
+        return [l for l in by_id.values() if l.entry.id not in hidden]
+
+    def label(self, l):
+        """Human label for an author under the repo/user attribution setting."""
+        if l.user == self.user:
+            return "you"
+        mode = self.attribution()
+        if mode == "none":
+            return "teammate"
+        return (l.entry.display or l.user) if mode == "named" else l.user
