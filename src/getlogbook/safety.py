@@ -1,6 +1,7 @@
 """Redaction (best-effort lint, not a guarantee) and sanitising of text that enters agent context."""
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 
@@ -53,3 +54,26 @@ def looks_tabular(text, run=3):
         streak = streak + 1 if row else 0
         best = max(best, streak)
     return best >= run
+
+
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_FENCE = re.compile(r"```[\s\S]*?(?:```|$)")
+_MDLINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_URL = re.compile(r"\b[a-z][a-z0-9+.-]*://\S+", re.I)
+_IMPERATIVE = re.compile(
+    r"^\s*(?:ignore|disregard|forget|override|run|execute|exec|curl|wget|sudo|rm|delete|you (?:must|should|are)|"
+    r"system\s*:|assistant\s*:|human\s*:|important\s*:|new instructions?)\b", re.I)
+
+
+def sanitize(text, cap=500):
+    """Make untrusted text inert before it enters an agent's context. One path in, used for every field."""
+    if not isinstance(text, str):
+        return ""
+    t = _FENCE.sub(" ", _CTRL.sub("", text))
+    t = _URL.sub("[link removed]", _MDLINK.sub(r"\1", t)).replace("<", "(").replace(">", ")")
+    lines = ["[removed]" if _IMPERATIVE.match(l) else l for l in t.splitlines()]
+    return " ".join(" ".join(lines).split())[:cap]
+
+
+def digest_hash(data):
+    return hashlib.sha256(data if isinstance(data, bytes) else data.encode("utf-8")).hexdigest()
