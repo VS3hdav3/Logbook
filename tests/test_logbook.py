@@ -170,3 +170,26 @@ class TestSync(Base):
         rc.init()
         sync.sync(rc, fetch_only=True)
         self.assertEqual(len(rc.all_entries()), 1)
+
+
+class TestAnchor(Base):
+    def test_ladder_rungs_and_rename(self):
+        d = make_repo(self.root, "r", "a@x.io")
+        repo = Repo(d)
+        repo.init()
+        commit(d, "base", {"models/staging/stg_o.sql": "select 1\n", "models/marts/fct_x.sql": "select 1\n"})
+        sha = commit(d, "change x (#7)", {"models/marts/fct_x.sql": "select 2\n"})
+        a = tree.anchor_for(repo)
+        an = tree.Anchorer(repo)
+        self.assertEqual(an.place(a)[1:], ("exact", "sha"))
+        self.assertEqual(an.place({**a, "sha": "1" * 40})[1:], ("rewritten", "patch-id"))
+        self.assertEqual(an.place({"sha": "1" * 40, "pr": "7"})[1:], ("rewritten", "PR number"))
+        self.assertEqual(an.place({"sha": "1" * 40, "tree": a["tree"]})[1:], ("rewritten", "tree hash"))
+        self.assertEqual(an.place({"sha": "1" * 40})[1], "orphaned")
+        self.assertEqual(an.place({})[1], "unanchored")
+        sh("git", "mv", "models/staging/stg_o.sql", "models/staging/stg_orders.sql", cwd=d)
+        sh("git", "commit", "-q", "-m", "rename", cwd=d)
+        self.assertEqual(tree.aliases_for(repo, "stg_orders"), {"stg_o", "stg_orders"})
+        self.assertEqual(tree.layer_of("models/marts/x.sql"), "mart")
+        self.assertEqual(tree.layer_of("stg_orders"), "staging")
+        self.assertEqual(sha, an.sp[0]["sha"])
