@@ -41,7 +41,7 @@ branch lists and can trigger CI, so branches are only the reactive fallback.
 | Host refuses `refs/logbook/*` | push falls back to `refs/heads/logbook/log/...`, remembered in config; readers handle both | tested with a pre-receive hook. **Fallback branches show in branch lists and may trigger CI on push: add a CI filter such as `branches-ignore: logbook/**`** |
 | Two clones, same device id | push is rejected as diverged and reported; fix = re-`init` on one clone | message tested indirectly only |
 | Squash merge / cherry-pick / rebase | ladder rungs; unresolved entries stay under their branch node | rungs tested; real GitHub squash messages not tested |
-| Renamed model | `git log -M` over the first-parent line, both names resolve | tested for a simple rename; heavy edits + rename will be missed |
+| Renamed file | `git log -M` over the first-parent line, both names resolve | tested for a simple rename; heavy edits + rename will be missed |
 | Hostile entry | untrusted: searchable, never injected; trusted: sanitised; viewer: `textContent` + CSP | tested with fixtures |
 | Leaked secret | `purge --push`; forks/mirrors may keep copies; rotate | tested locally |
 | Agent without hooks | `logbook snippet` + `note`; git floor records commits as `auto-copied` | floor tested; snippet not tested with a real agent |
@@ -61,5 +61,4 @@ branch lists and can trigger CI, so branches are only the reactive fallback.
 
 1. Run `logbook install --agent claude-code --write` in a throwaway repo with a real Claude Code session; capture real payloads and transcripts as golden fixtures.
 2. Push to a private GitHub repo and test: custom ref push, squash-merge PR number re-anchoring, CI fetch step.
-3. dbt layer: reuse Lodestone's categorizer (this module already has `layer_of`), then join entries to column lineage once that exists.
-4. Decide the real name and whether this is its own repo (recommended) or a subpackage of Lodestone.
+3. Stack-specific meaning (for example warehouse layers or lineage) stays out of this tool; another tool can attach tags to an anchor.
