@@ -44,7 +44,7 @@ branch lists and can trigger CI, so branches are only the reactive fallback.
 | Renamed model | `git log -M` over the first-parent line, both names resolve | tested for a simple rename; heavy edits + rename will be missed |
 | Hostile entry | untrusted: searchable, never injected; trusted: sanitised; viewer: `textContent` + CSP | tested with fixtures |
 | Leaked secret | `purge --push`; forks/mirrors may keep copies; rotate | tested locally |
-| Agent without hooks | `logbook snippet` + `note`; git floor records commits as `inferred` | floor tested; snippet not tested with a real agent |
+| Agent without hooks | `logbook snippet` + `note`; git floor records commits as `auto-copied` | floor tested; snippet not tested with a real agent |
 | Concurrent sessions | per-session lock file, unique entry ids, atomic replace with retry | lock logic tested lightly |
 | Hook budget | spool + detached spawn; `SessionEnd` default budget is 1.5 s | measured on this Windows machine (median of 7, `python -m getlogbook capture` from a clean venv): `Stop` 355 ms, `SessionEnd` 352 ms, `UserPromptSubmit` 560 ms (was 540 / 563 / 1,252 ms before lean imports, batched git calls and a per-HEAD cache). **Not measured inside a real Claude Code session or on macOS/Linux.** About 80 ms is bare interpreter start and each `git` call costs ~45 ms |
 | Push permissions | Any writer with push access can write any `refs/logbook/log/<anyone>/...` path. Clients cannot prevent it; the trust list limits the damage; only the host can enforce one-writer-per-ref | documented limit |
