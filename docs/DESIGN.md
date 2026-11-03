@@ -76,7 +76,11 @@ same question through `claude -p` with no notes (A) and with one note that recor
 | Median cost | $0.048 | $0.043 |
 | Correct answers | 4 of 4 | 4 of 4 |
 
-Read it as a smoke test: one author-written task and note, a toy repo, four rounds, one model. B still reads about three times
+Rerun on the final 0.0.2 code, three rounds each: A used a median of 7 tool calls, 10 turns, 160,000 input tokens and $0.073; B used
+1 tool call, 2 turns, 44,000 input tokens and $0.039; all six answers were correct. A moved between runs (5.5 tool calls earlier,
+7 now), so compare the two arms within a run, not across them.
+
+Read it as a smoke test: one author-written task and note, a toy repo, a handful of rounds, one model. B still reads about three times
 because the note says to verify against the code. Real repos, real notes and teams are untested.
 
 ## Will the agent write the note itself? (smoke test)
@@ -89,6 +93,8 @@ which the agent ran `logbook note` without being asked. Four runs per setting, s
 | Rules block and skill installed, no nudge | 0 of 4 |
 | Stronger rules wording ("part of finishing a task") | 1 of 4 |
 | Plus a once-per-turn block before finishing (`stop_hook_active` stops it looping) | 4 of 4 |
+
+A rerun on the final code, with block as the default, again wrote a note in 4 of 4 runs.
 
 So instructions alone were not enough, and the Stop-hook block is now the default (`logbook config nudge context|off` to soften or
 disable). A sample note it produced named the cause, what was read, what was ruled out, and what it had not verified. Four runs on a
