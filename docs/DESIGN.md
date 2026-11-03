@@ -62,3 +62,20 @@ branch lists and can trigger CI, so branches are only the reactive fallback.
 1. Run `logbook install --agent claude-code --write` in a throwaway repo with a real Claude Code session; capture real payloads and transcripts as golden fixtures.
 2. Push to a private GitHub repo and test: custom ref push, squash-merge PR number re-anchoring, CI fetch step.
 3. Stack-specific meaning (for example warehouse layers or lineage) stays out of this tool; another tool can attach tags to an anchor.
+
+## Does a note save the investigation? (smoke test)
+
+`bench/run_ab.py` builds a 12-file shop repo with a bug whose cause takes several reads to find, installs Logbook, and asks the
+same question through `claude -p` with no notes (A) and with one note that records the cause (B). Both arms have the hooks.
+
+| 4 rounds each | A: no notes | B: one note |
+|---|---|---|
+| Median tool calls | 5.5 | 3 |
+| Median turns | 6.5 | 4 |
+| Median input tokens (cache included) | 98,000 | 66,000 |
+| Median cost | $0.048 | $0.043 |
+| Correct answers | 4 of 4 | 4 of 4 |
+
+Read it as a smoke test: one author-written task and note, a toy repo, four rounds, one model. B still reads about three times
+because the note says to verify against the code. Real repos, real notes and teams are untested.
+
