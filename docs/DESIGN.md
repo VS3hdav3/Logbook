@@ -79,3 +79,18 @@ same question through `claude -p` with no notes (A) and with one note that recor
 Read it as a smoke test: one author-written task and note, a toy repo, four rounds, one model. B still reads about three times
 because the note says to verify against the code. Real repos, real notes and teams are untested.
 
+## Will the agent write the note itself? (smoke test)
+
+`bench/run_ab.py --write-rate` runs the same bug question with no notes recorded and `Bash(logbook:*)` allowed, and counts runs in
+which the agent ran `logbook note` without being asked. Four runs per setting, same toy repo:
+
+| Setting | Wrote a note |
+|---|---|
+| Rules block and skill installed, no nudge | 0 of 4 |
+| Stronger rules wording ("part of finishing a task") | 1 of 4 |
+| Plus a once-per-turn block before finishing (`stop_hook_active` stops it looping) | 4 of 4 |
+
+So instructions alone were not enough, and the Stop-hook block is now the default (`logbook config nudge context|off` to soften or
+disable). A sample note it produced named the cause, what was read, what was ruled out, and what it had not verified. Four runs on a
+toy task say little about real work; the cost is one extra turn on turns that read or searched three or more times.
+
