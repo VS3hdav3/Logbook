@@ -28,8 +28,7 @@ machines, pseudonymous), `<device>` = random per clone.
 
 Problems found by running code, not by the panels: a non-fast-forward push was mis-read as "host refuses custom refs";
 `--force-with-lease` without an explicit expected value fails for custom refs; `logbook explain` printed hostile text raw
-even though `inject` sanitised it; `logbook serve` did not flush its URL, so a caller reading it through a pipe hung forever;
-and hooks took 0.5-1.25 s because of ~190 ms of imports and 9-10 `git` subprocesses. All are fixed; the first three have tests.
+even though `inject` sanitised it; and hooks took 0.5-1.25 s because of ~190 ms of imports and 9-10 `git` subprocesses. All are fixed; the first three have tests.
 One panel suggestion I rejected: "default to orphan branches" (a senior-advisor view). You chose refs, and branches show in
 branch lists and can trigger CI, so branches are only the reactive fallback.
 
@@ -42,7 +41,7 @@ branch lists and can trigger CI, so branches are only the reactive fallback.
 | Two clones, same device id | push is rejected as diverged and reported; fix = re-`init` on one clone | message tested indirectly only |
 | Squash merge / cherry-pick / rebase | ladder rungs; unresolved entries stay under their branch node | rungs tested; real GitHub squash messages not tested |
 | Renamed file | `git log -M` over the first-parent line, both names resolve | tested for a simple rename; heavy edits + rename will be missed |
-| Hostile entry | untrusted: searchable, never injected; trusted: sanitised; viewer: `textContent` + CSP | tested with fixtures |
+| Hostile entry | untrusted: searchable, never injected; trusted: sanitised | tested with fixtures |
 | Leaked secret | `purge --push`; forks/mirrors may keep copies; rotate | tested locally |
 | Agent without hooks | `logbook snippet` + `note`; git floor records commits as `auto-copied` | floor tested; snippet not tested with a real agent |
 | Concurrent sessions | per-session lock file, unique entry ids, atomic replace with retry | lock logic tested lightly |
