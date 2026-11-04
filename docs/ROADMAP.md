@@ -27,29 +27,23 @@ environment; `LOGBOOK_WRITER=agent|user` overrides); grounding checks (`logbook 
   (n = 1). It also found two bugs the unit tests missed (below).
 - 0.0.4 from real PyPI: 43 end-to-end checks pass (`bench/e2e.py <logbook executable>`).
 
-## Next: 0.0.5, note quality, the nudge, permissions (the owner's list, in this order)
+## 0.0.5: built, in a stack of open PRs (#14 docs, then #15 to #19; merge in that order, each retargets to main)
 
-1. **Evidence is first-class, and notes are 3 to 9 lines.** `evidence:` (what was run or read: a command and its result, or file:line) is required on an agent's
-   finding or change note, not satisfied by merely naming a file. A note is 3 to 9 non-empty lines of the real work: the summary in 2 to 4 sentences, why, evidence, and
-   decided/open when the work had them; one line is refused with a message saying what to add. Today the skill asks for 3 to 5 sentences but nothing enforces it
-   (the verified note had a one-line summary and no evidence field). Raise or reshape `MAX_SUMMARY`/field caps only as needed. Tests: refused and accepted shapes.
-2. **A note with a commit carries the commit's whole message.** Today only an auto-copied draft holds the commit body (`what`, in `capture.reconcile`, and drafts are never
-   injected); an agent's change note and the anchor hold only the subject. Decision: read subject and body from git when a commit node is shown (`ask commit:<sha>`, the
-   `source:` line, injection), do not copy it into the note; the note holds what git does not have. Cap the body when injected.
-3. **The nudge must fire reliably, with numbers to prove it.** Fixed: a loose pattern counted `logbook ask "... note ..."` as a note. Still wrong: `capture.checkpoint`
-   overwrites `state["turn"]` at every checkpoint instead of adding to it (a later `SessionEnd` checkpoint zeroes the counts). Build `bench/real_session.py`: N tasks
-   (explain, debug with a planted bug, small refactor, trivial) in fresh clones with `claude -p`; record per task whether the prompt fired, whether a note was written, its grounding
-   record, whether it is correct (checked against the planted truth), tokens and cost. Targets to set with the owner; at least: every root-cause turn ends with a grounded note, no
-   prompt on trivial turns. The earlier "4 of 4" came from a synthetic transcript and does not hold.
-4. **Permissions follow the four modes, with no second setup.** `logbook setup` currently also writes allow rules into `.claude/settings.local.json` (PR #12); the owner
-   does not want extra setup bulk. Replace it: a Logbook `PreToolUse` hook on Bash commands that start with `logbook`/`getlogbook` returns the permission decision from the mode
-   and the subcommand: note, ask, context, cites, log, status, summarize, backfill always allowed; `publish`: never denies, ask lets Claude Code's normal prompt run, claude and auto allow;
-   `sync`: ask unless auto; purge, gc, trust, config, setup, uninstall always ask. **Verify first** that a hook's `permissionDecision: allow` really suppresses the prompt, also in `-p`.
-   Remove the allow-rule edit from `install_claude` (and the uninstall half) once the hook works; keep the matrix in one table in the code and in the README. The modes are shown on the band;
-   add modes only if the matrix needs one.
-5. **`logbook-scribe`, a background subagent.** `agents/logbook-scribe.md` (installed with the skill): its own context, a cheaper model, tools Read, Grep, Glob and `logbook` only. The nudge
-   (block mode) and `tidy` hand it the facts of a turn or a brief; the main conversation gets a two-line result. Needs a guard (an environment variable) so the scribe's own
-   session does not trigger Logbook's hooks again. Measure cost and note quality against the main-agent path from item 3.
+All five of the owner's items are built and pass the suite (CI green on #15 to #18 when this was written). Not released: no version bump or tag yet.
+
+1. **Evidence and 3 to 9 lines (#15).** An agent's finding or change note needs an `evidence:` line and 3 to 9 non-empty lines; a file or commit no longer counts as evidence;
+   `--allow-ungrounded` bypasses only the evidence rule. A person's note and summary notes are exempt. Evidence is only checked to be non-empty.
+2. **The commit's whole message (#16).** `ask commit:<sha>` and an injected note show subject and body read from git (injected: cleaned, capped at 400 characters); nothing is copied into the note.
+3. **Nudge counts (#17).** Fixed: a checkpoint overwrote the turn's counts (now they add up, and the next prompt starts a new turn). `bench/real_session.py` runs real `claude -p` tasks.
+   **Measured so far: one trivial and two debug runs.** The trivial run had no reminder and no note; both debug runs wrote a grounded agent-written note that names the cause, and no reminder
+   fired because Claude wrote the note on its own. That is n = 1 each, not a result. Still to do with the owner: agree targets and N, run explain and refactor, run enough debug runs to say how often the reminder is needed at all.
+4. **Permissions from a hook (#18).** One `PreToolUse` hook on Bash decides from the publish mode and the subcommand (table in `permissions.py` and the README, kept equal by a test); setup writes no allow rules and removes the 0.0.4 ones.
+   Verified in real `claude -p`: a hook `allow` runs a command that is otherwise refused, `ask` and `deny` do not. **Not verified:** an interactive session skipping the prompt on `allow`; how a hook `allow` or `ask` interacts with the person's own allow and deny rules.
+5. **`logbook-scribe` (#19).** A haiku subagent installed by setup; the nudge tells the agent to hand over the facts when it is installed; the permission hook confines it (the hook payload carries `agent_type`).
+   Verified: prompt and stop hooks do not fire inside a subagent (so no recursion guard was needed), and given facts it wrote a grounded 6-line note for about 0.11 USD. **Not verified:** the nudge-to-scribe path end to end,
+   the confinement in a real session (unit-tested only), and whether the scribe is cheaper or better than the main agent's own note (`bench/real_session.py --no-scribe` is there for that comparison; n = 1 each showed no difference).
+
+Left for 0.0.5 before release: the measurements above, `claude plugin validate .` and `claude plugin test .` (the band is untouched but was not re-run), the version bump, an rc tag and `bench/e2e.py` against the build installed from TestPyPI (it was updated for the hook and the scribe and passes against a local build of the branch, but not yet against an uploaded one), then the release PR.
 
 ## Then: statuses, `logbook tidy`, file tracking (design in `docs/TIDY-AND-MEMTREE.md`)
 
