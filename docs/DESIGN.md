@@ -1,5 +1,9 @@
 # logbook: design and decision log
 
+> **Partly out of date (kept as the record of the first design).** Since then: one shelf per person (`<user>/000000`) replaced per-device refs; `git push` no longer sends notes (`logbook sync` does);
+> the browser viewer was removed; Claude Code hook payloads are now verified in a real session; provenance, grounding checks, publish modes and notes as `key: value` lines were added.
+> Current state and plan: `docs/ROADMAP.md`; next design: `docs/TIDY-AND-MEMTREE.md`.
+
 Status: working prototype, stdlib only. Verified by `tests/` (unit, 17) and `logbook demo` (integration, ~35 checks) on
 Windows with Python 3.13 and git 2.51 only. Nothing here has been run on macOS/Linux, on a real GitHub/GitLab remote,
 or against a real Claude Code session.
