@@ -45,18 +45,17 @@ All five of the owner's items are built and pass the suite (CI green on #15 to #
 
 Left for 0.0.5 before release: the measurements above, `claude plugin validate .` and `claude plugin test .` (the band is untouched but was not re-run), the version bump, an rc tag and `bench/e2e.py` against the build installed from TestPyPI (it was updated for the hook and the scribe and passes against a local build of the branch, but not yet against an uploaded one), then the release PR.
 
-## Then: statuses, `logbook tidy`, file tracking (design in `docs/TIDY-AND-MEMTREE.md`)
+## Statuses and `logbook tidy` (design in `docs/TIDY-AND-MEMTREE.md`): first half built, on `feat/note-status`
 
-- Every note tracks files (`checks.files` exists): a note with a commit tracks the commit's files; a note without one tracks the files it names, the files Claude read or edited since the last note
-  and paths mentioned in its text that exist. A deterministic query lists notes whose tracked files changed in a later commit.
-- Statuses: open, in-progress (later commits changed the finding in part: shown with those commits, ranked lower), resolved (fixed or gone: never injected, never cited), superseded-by.
-  A resolved note is never used as context or cited. Weigh in-progress and resolved differently in ranking.
-- `logbook tidy`: Python lists candidates with reasons; a Claude agent (the scribe) judges whether two notes mean the same thing or contradict, and whether a later commit outdates a note
-  (word overlap is only a way to find candidates, not the judgment); proposals always cite the commit or newer note; **the user approves** before anything changes; a superseded note records
-  who superseded it (name) and `agent-written` when Claude did the work. Only the author's own notes are changed; for a teammate's note, a status from a trusted writer with the same evidence hides it, never deletes it.
-- Garbage collection through tidy: old auto-copied drafts (they hold the session's final message and wrong paths like `.claude/` and `CLAUDE.md`), change notes that only restate the diff,
-  resolved notes long past use, orphaned notes whose files are gone. Hide first; delete only the owner's own notes, after confirmation; fold into a summary before dropping.
-- Approvals are asked once, in chat, with the whole list; never per note.
+Built: `logbook tidy` lists candidates with reasons (files changed in later commits, notes that may repeat each other, old auto-copied drafts); `tidy --brief` is the brief for an agent;
+`tidy --apply` stores approved statuses (open, in-progress, resolved) as separate records written by the note's author, validated against git (the commits cited exist and touched the
+note's tracked files after it was written; a reason; all or nothing) and is the one tidy command the permission hook always asks about. Resolved is never injected or cited; in-progress is
+shown with its commits and ranked lower. A record from another writer is ignored. Old versions show a record as an ordinary note.
+Verified: unit tests and `bench/e2e.py`; in a real `claude -p` session the agent read the brief, proposed `resolved` and stopped to wait for the person's yes (the approval prompt itself cannot be seen under `-p`).
+**Not verified:** the interactive approval prompt on `tidy --apply`; any run on a real repo with many notes (only fixtures); a record shared to a teammate and read by a version that predates it.
+
+Not built: the scribe doing the tidy judging; a trusted writer's status hiding a teammate's note; recording who superseded a note by name beyond what `supersedes` shows; garbage collection through tidy
+(hide, fold into a summary, delete the owner's own notes after confirmation); approvals asked once in chat is a skill instruction, not enforced beyond the permission prompt.
 
 ## Then: the full summary tree
 
