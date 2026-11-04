@@ -7,14 +7,14 @@ or against a real Claude Code session.
 ## Shape
 
     private log   .git/logbook/private/<id>.json        everything, unredacted, never tracked, shared by worktrees
-    shared log    refs/logbook/log/<user>/<device>       one writer per ref; tip tree = every entry as entries/<id>.json
+    shared log    refs/logbook/log/<user>/000000         one shelf per person; tip tree = every entry as entries/<id>.json
     fetched       refs/logbook-remote/<remote>/log/...   other people's refs, in their own namespace (a fetch can never
                                                            overwrite your unpushed ref); fallback layout under .../branchlog/...
     read time     merge by entry id, hide purged (tombstone) and same-author-superseded, overlay private
     tree          branch -> first-parent commits -> entries; each entry carries an anchor state and the rung that matched
 
-Authorship = the ref path (`<user>/<device>`), never a field in the file. `<user>` = sha256(git user.email)[:10] (stable across
-machines, pseudonymous), `<device>` = random per clone.
+Authorship = the ref path (`<user>/000000`), never a field in the file. (0.0.2 used a random per-clone device id as the second part; those refs are still read and are folded into the shelf on the next publish or sync.) `<user>` = sha256(git user.email)[:10] (stable across
+machines, pseudonymous), the second part is a fixed hex constant, kept in that shape so 0.0.2 readers still match it.
 
 ## What the review panels changed (5 roles x 5 issue clusters = 25 agents, reports are model output, not facts)
 
@@ -38,7 +38,7 @@ branch lists and can trigger CI, so branches are only the reactive fallback.
 |---|---|---|
 | Shallow clone / CI | refs fetched at depth 1 (tip tree holds all entries); missing anchor commit renders "unverified" | tested |
 | Host refuses `refs/logbook/*` | push falls back to `refs/heads/logbook/log/...`, remembered in config; readers handle both | tested with a pre-receive hook. **Fallback branches show in branch lists and may trigger CI on push: add a CI filter such as `branches-ignore: logbook/**`** |
-| Two clones, same device id | push is rejected as diverged and reported; fix = re-`init` on one clone | message tested indirectly only |
+| Same person, two machines | push is rejected as non-fast-forward, so sync fetches the remote shelf, merges the union of both trees (a purge's tombstone wins, and then the result is force-pushed with a lease) and pushes again | tested |
 | Squash merge / cherry-pick / rebase | ladder rungs; unresolved entries stay under their branch node | rungs tested; real GitHub squash messages not tested |
 | Renamed file | `git log -M` over the first-parent line, both names resolve | tested for a simple rename; heavy edits + rename will be missed |
 | Hostile entry | untrusted: searchable, never injected; trusted: sanitised | tested with fixtures |
