@@ -46,6 +46,25 @@ All five of the owner's items are built, merged and pass the suite. Not on PyPI:
 Left before 0.0.5 can be released (the owner's calls are marked): review and merge PRs #22, #23 and #24 in that order; cut `0.0.5rc5` from `main` once they are in; decide what the nudge numbers must be
 (see "Measure" below); then the release PR, tag `v0.0.5` and the owner's click on the `pypi` environment. Yank 0.0.3 and 0.0.2 (owner).
 
+## The background worker and the private memtree (owner's decision, 2026-11-05; PR `feat/worker`)
+
+Reverses the earlier "no model of our own" rule, as an opt-in. `logbook config worker on`: after each finished turn a detached process sends the new transcript to `haiku` through the person's own
+`claude -p` (no key stored) and writes the few things worth keeping as **private** `worker-written` notes, anchored to branch and commit, so they sit in the same repo > branch > commit > note tree.
+Python checks each note (evidence that appears in the transcript, nothing named that is not in the repo, 3 to 9 lines, no repeat; its own earlier note is replaced). It never publishes (the person
+publishes by id). A worker note reaches an agent only with evidence. `logbook config tidy auto|manual` cleans up its own old, dead or resolved drafts into `.git/logbook/archive/` (nothing deleted);
+`tidy --garbage` is the manual form. With the worker on the agent is not reminded to write notes unless `nudge` is set. The main agent's remaining jobs are explicit notes ("remember this"), publish and sync.
+
+Cost design (measured): one headless `claude -p` call costs 0.032 USD with default settings, 0.0035 with `--model haiku`, 0.0006 with haiku and `--strict-mcp-config --disable-slash-commands --setting-sources ""`;
+`--bare` does not work with a subscription login. Batch per turn (not per tool call); quiet turns (fewer than 2 reads and edits) make no call; 60,000 characters at most; 40 calls a day; a one-hour pause on
+a usage-allowance error. Measured over 8 real sessions (debug, explain, refactor, trivial, two each; the agent's own reminder off): worker cost 0.0078 USD in total against 0.874 USD for the sessions
+(under 1%); the debug sessions kept 1 note each (one an accurate root-cause note with quoted output, one a fair design observation about partial refunds, with an honest `open` caveat); explain and refactor kept none;
+4 of 6 explain/refactor/trivial sessions made no call. Where the agent had already written the same note, the worker dropped its duplicate. n = 2 per task: a first look, not a rate.
+
+**Not verified / not built:** the memtree is the existing tree plus the worker's notes; **the worker does not yet refresh branch or area summaries** (the next step: a second pass that rewrites a stale summary, with the
+same caps); injection still ranks flat rather than descending the tree; no check of how much quota a day of real use spends (only dollars as the CLI reports them); a long session whose final turn ends while a pass is
+still running leaves that tail to the next session's pass; tested only on Windows (the detached start uses the same code as the post-commit worker); a worker draft is not yet offered in `publish` (publish by id).
+The tidy `auto` mode only archives; judging a note outdated still needs the person (`tidy --apply`).
+
 ## Statuses and `logbook tidy` (design in `docs/TIDY-AND-MEMTREE.md`): first half built, on `feat/note-status`
 
 Built: `logbook tidy` lists candidates with reasons (files changed in later commits, notes that may repeat each other, old auto-copied drafts); `tidy --brief` is the brief for an agent;
@@ -115,6 +134,7 @@ One commit message in history has a stray `¹` (it cannot be fixed without a for
 - Note ids are `<11 hex digits of ms time>-<8 random hex digits>`: sortable, unique, never reused; skipping an already-shared id only happens when re-publishing the same note.
 - "agent-written" only when Claude wrote the note; old notes show `origin unknown`. A person's own note needs no why and no evidence; an agent's does.
 - Judgment (same meaning? outdated?) is Claude's, bounded and cached, then validated by Python; exact questions (does it exist, what changed) are Python.
+- A background model is allowed, opt-in and private only (owner, 2026-11-05): Logbook may call the person's own `claude -p` to draft notes and (later) refresh summaries. It never publishes, never stores a key, and is capped by calls, characters and a pause on quota errors. Publishing and syncing stay the main agent's and the person's job.
 - Citations are bare superscripts (`¹`), numbered per chat in injection order and not renumbered.
 - No reference tools are named in repo text, commits or comments.
 
