@@ -74,8 +74,12 @@ not the in-session dev copy; the band at narrow widths, click-to-open of the com
 ## Left to do besides the unbuilt items above
 
 **Measure (nothing here has a real number yet)**
-- The nudge: agree targets and N with the owner, run `bench/real_session.py` for explain, debug, refactor and trivial (so far one trivial and a few debug runs: Claude wrote its own note in every debug run before any
-  reminder fired, so the reminder and the scribe hand-off were never exercised end to end). Then `--no-scribe` against the default for cost and note quality.
+- The nudge, measured on 0.0.5rc2-era code with `bench/real_session.py` (real `claude -p`, one fresh fixture repo per run, n = 2 per task, so a first look and not a rate):
+  trivial: no reminder, no note (2 of 2). Debug with a planted bug: Claude wrote its own grounded note with an evidence line that names the refund cause in 2 of 2 runs with the scribe installed and 2 of 2 without,
+  and no reminder fired (it had already noted). Explain: the reminder fired in 2 of 2 and Claude chose not to write a note. Refactor: the reminder fired in 1 of 2, no note in either.
+  The scribe was never used in these runs, so the hand-off path is still untested end to end. Cost per run: trivial 0.084 USD, explain 0.12, refactor 0.10 to 0.12, debug 0.155 with the scribe installed against
+  0.140 without: **installing the scribe made unused debug runs about 10% dearer** (its description sits in every session's context). Targets are still not agreed with the owner; against the two stated here (every
+  root-cause run ends with a grounded note; no prompt on trivial turns) the numbers hold at n = 2. Still open: a larger N, tasks where Claude does not note on its own, and whether to keep the scribe installed by default given its cost.
 - Whether the evidence rule produces better notes or just longer ones: it only checks that `evidence:` is non-empty and that a note has 3 to 9 lines; read real notes.
 - Whether notes change what a fresh agent does (2 or 3 teammates, a couple of weeks).
 
@@ -87,8 +91,9 @@ not the in-session dev copy; the band at narrow widths, click-to-open of the com
 - Windows: a command line with backslashes (`C:\path\logbook.exe note ...`) gets no opinion from the hook, so it prompts as usual; a bare `logbook` is what an agent normally runs.
 
 **Product gaps found while building**
+- (Fixed in rc2: a status record no longer appears as its own note in `log`; the note it is about shows `[resolved]` or `[in-progress]` and a `status:` line in `ask note:<id>`.)
 - `tidy` is hidden from `logbook -h` (the listed seven are `setup note publish sync ask log status`): decide whether it is an eighth listed command once statuses are in use.
-- The 3 to 9 line rule counts lines of fields, not sentences, and `--allow-ungrounded` is the only way to save an agent note with nothing to run or read; a note about a pure decision has no honest `evidence:`.
+- The 3 to 9 line rule counts lines of fields, not sentences. (Fixed in rc2: for a decision the user made, the skill now says the evidence is what they said or chose, quoted briefly; `--allow-ungrounded` stays for the truly evidence-less case.)
 - A status record shows in `ask`/`log` as its own note ("resolved: ..."); hide records from the tree if that clutters.
 - The permission hook is conservative: a quoted argument containing `;`, `(`, `$` or a backslash gets no opinion (a prompt), even when harmless.
 - Line endings: the repo mixes CRLF and LF (Git warns on commit); a `.gitattributes` would stop that.
@@ -97,7 +102,7 @@ not the in-session dev copy; the band at narrow widths, click-to-open of the com
 ## Housekeeping
 
 Yank 0.0.3 and 0.0.2 on PyPI (owner). Delete merged branches, local and remote (the feature branches of 0.0.3 to 0.0.5, `chore/release-0.0.3`, `chore/release-0.0.4`, `chore/release-0.0.4rc3`, `chore/release-setup`, `release/0.0.1`,
-`viewer-v2-merge-cards`, `docs/*`; keep `viewer`, which holds the removed browser viewer, and keep release tags). Refresh `docs/DESIGN.md` (it still describes per-device refs and an unverified Claude hook).
+`viewer-v2-merge-cards`, `docs/*`; keep `viewer`, which holds the removed browser viewer, and keep release tags). (`docs/DESIGN.md` was refreshed in rc2: status, not-verified and next-steps sections; the rest stays as the record of the first design.)
 One commit message in history has a stray `¹` (it cannot be fixed without a force-push, which is blocked). Almanac (folder `lodestone`) is untouched and separate.
 
 ## Decided (do not reopen without a reason)
