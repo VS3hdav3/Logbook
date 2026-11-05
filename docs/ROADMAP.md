@@ -5,7 +5,32 @@ anchored to commits, so the next agent starts from it instead of rediscovering i
 belongs in the separate tool (Almanac, repo folder `lodestone`).
 
 Read this first in a fresh session, then `CLAUDE.md` (how we work) and `docs/TIDY-AND-MEMTREE.md` (the design of what comes next).
-Last updated 2026-11-05: 0.0.4 is on PyPI; **0.0.5rc4** is on TestPyPI (tag `v0.0.5rc4`, from `chore/release-0.0.5rc4`: PR #22 statuses, #23 polish and numbers, #24 the index-lock fix, plus the version bump). rc1 and rc3 are also there. The tag `v0.0.5rc2` is a mistake that published nothing (it points at a commit whose version was still 0.0.4, so the publish check refused it): delete it (the owner; the auto-mode classifier blocked me).
+Last updated 2026-11-05 (the rescope below was agreed after this paragraph was written): 0.0.4 is on PyPI; **0.0.5rc4** is on TestPyPI (tag `v0.0.5rc4`, from `chore/release-0.0.5rc4`: PR #22 statuses, #23 polish and numbers, #24 the index-lock fix, plus the version bump). rc1 and rc3 are also there. The tag `v0.0.5rc2` is a mistake that published nothing (it points at a commit whose version was still 0.0.4, so the publish check refused it): delete it (the owner; the auto-mode classifier blocked me).
+
+## Current direction: the rescope (owner, 2026-11-05). Read `docs/RESCOPE.md` first
+
+Where this conflicts with the sections below (a note for every commit, `backfill`, `change` notes, the agent reminder, the scribe, four publish modes), this section wins.
+
+**Decided (the owner's words, condensed):**
+- A memory in the style of an existing tool, scoped per **branch** instead of per project. A background observer queues every tool use (hooks, no model call) and a detached process turns batches into observations in a
+  **running log per branch**. `logbook log` is a **savepoint**: it summarizes the running log since the last savepoint into a stored log in the private logbook, with the branch and, if there is one, the commit.
+  A new branch starts from main's running log. **A note always has a branch; the commit is optional. There is no goal of a note per commit.**
+- The observer follows the reference tool's design (the queue, batches, the observation record, the skip rule, the summary checkpoint); Logbook only files the result under a branch and commit. The prompt is written fresh, not copied.
+  Calls are stateless with a window of recent observations (measured: 0.0052 against 0.0121 USD for 6 events with a persistent conversation).
+- Three modes: `manual`, `ask`, `auto`. Collection runs in every mode (kill switch: `config worker off`).
+- Publishing moves a branch's stored logs to the shared log. In auto mode it is triggered when a branch the person worked on is merged; the **main model** runs `logbook publish`, not the observer.
+  `logbook sync` brings shared logs in and also runs on `git pull` (pull-only, never pushes). `logbook tidy` runs that sync first, then reconciles the private logs, with its own background worker on a separate cheap model.
+- The GitHub MCP is used in the dev workflow and registered by the plugin (the owner adds the token; the repo never stores one).
+- The memtree matters less now; revisit after the observer works.
+
+**Status.** The 0.0.5 work (#14 to #25) is merged to `main`; `0.0.5rc5` is on TestPyPI. The design is PR #27. Phase 1 is on branch `feat/observer` (pushed as work in progress, not a PR): `running.py` (queue, cursor, per-branch
+observations, forking), `observer.py` (hook side, prompt, XML parsing, drain), a slimmed `worker.py` (the model call and the daily budget) and the hook wiring in `capture.py`. **Not done in phase 1:** `cli.py` still calls the removed
+per-turn worker (`worker --run`), so `logbook worker` is broken on that branch; `worker --drain/--flush/--branch/--show`; the `worker_batch` config key and the permission flag (`--drain` must ask); the nudge default; rewriting the old worker tests
+(new tests for the queue, forking, parsing, dedupe, batching, caps and quota pause); docs; one real-session run. After that: phase 2 (`logbook log`, the three modes, auto savepoint), phase 3 (remove the per-commit machinery, the nudge and the scribe),
+phase 4 (publish by branch and on merge, pull-only sync on `git pull`, tidy-then-sync and the tidy worker), phase 5 (context injection from stored logs and the running log; the plugin's GitHub MCP registration).
+
+**Also open:** decide whether `0.0.5` is released as it is or folded into the rescope release; delete the stray tag `v0.0.5rc2`, the old branch `docs/rescope` (its commit names the reference tool, which this repo's rules forbid; PR #26 is closed) and the other merged
+branches; yank 0.0.3 and 0.0.2 on PyPI; add a GitHub token for the MCP; a day of real use has not been measured for quota. Default answers to the smaller design questions are in `docs/RESCOPE.md`, "Open items".
 
 ## Where we are
 
