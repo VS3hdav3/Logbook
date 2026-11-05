@@ -9,7 +9,7 @@ Last updated 2026-11-05 (the rescope below was agreed after this paragraph was w
 
 ## Current direction: the rescope (owner, 2026-11-05). Read `docs/RESCOPE.md` first
 
-Where this conflicts with the sections below (a note for every commit, `backfill`, `change` notes, the agent reminder, the scribe, four publish modes), this section wins. The sections below describe the 0.0.5 state and are partly superseded by the five open PRs.
+Where this conflicts with the sections below (a note for every commit, `backfill`, `change` notes, the agent reminder, the scribe, four publish modes), this section wins. The sections below describe the 0.0.5 state and are partly superseded by the merged rescope.
 
 **Decided (the owner's words, condensed):**
 - A memory in the style of an existing tool, scoped per **branch** instead of per project. A background observer queues every tool use (hooks, no model call) and a detached process turns batches into observations in a
@@ -23,28 +23,31 @@ Where this conflicts with the sections below (a note for every commit, `backfill
 - The GitHub MCP is used in the dev workflow and registered by the plugin (the owner adds the token; the repo never stores one).
 - The memtree matters less now; revisit after the observer works.
 
-**Status (2026-11-05, end of the overnight run).** The 0.0.5 work (#14 to #25) is merged to `main`; `0.0.5rc5` is on TestPyPI. The design is PR #27. All five phases are built as a **stack of five PRs (plus #33), none merged**
-(each is based on the previous one; merge in this order with merge commits, retargeting the next to `main` after each): **#28** observer (`running.py`, `observer.py`, a slim `worker.py`, async `PostToolUse` hooks,
-`worker --drain`), **#29** savepoint (`logbook log`, kind `log`, `savepoint.py`, modes `manual / ask / auto`, the old view renamed `history`, band selector renamed), **#30** the per-commit machinery removed (nudge, scribe, backfill,
-context, before-commit notes, coverage counts), **#31** publish by branch (`publish --branch / --merged`, `branches.py`, `post-merge` / `post-rewrite` hooks, `tidy` fetches first, `auto` no longer publishes at write time),
-**#32** branch memory at session start and the GitHub MCP in the plugin. **#33** (added later the same morning) pauses the background calls before the subscription allowance runs out: it reads the five-hour and seven-day usage Claude prints in its own stream, pauses at 95% (`config quota_pause`) until the reset, and tells the person once per pause. CI is green on all six jobs for #28 to #31 (#32 was still running when this was written). The full suite (150 tests), the demo, the band tests, `claude plugin validate`
-and `bench/e2e.py` against a fresh local build (58 checks) pass.
+**Status (2026-11-05, after the first full day of testing).** The rescope is built and merged to `main` (#27 to #35). Owner decisions since the overnight run: keep PyPI; everything folds into a single **0.0.6** release;
+until then only release candidates go out, to TestPyPI (`v0.0.6rcN`; the final tag and the PyPI upload wait for the owner's yes). `0.0.6rc1` to `rc4` are on TestPyPI; `rc4` is the latest and includes everything below.
 
-**Verified for real:** one real haiku pass per phase (observations, then a savepoint summary); one real Claude Code session on Windows (planted bug, fresh build, `logbook setup`, `claude -p`): the async hooks queued 5 tool uses, the detached
-observer wrote 2 observations for 0.002 USD, `logbook log` saved a model-written log, and the next SessionStart output carried it (the whole session cost 0.11 USD).
-**Not verified:** a day of real use (quota, noise in the observations, the daily call cap of 120); the ask-mode Stop block and the auto-mode trigger in a live session; the `post-merge` hook in a real `git pull` against a real remote;
-the band's new selector by eye; how Claude Code behaves with the plugin's GitHub MCP entry when `GITHUB_PERSONAL_ACCESS_TOKEN` is unset (the validator accepts it).
-**Not built:** the tidy worker on its own cheap model (`tidy` only fetches first now); logs ranked into per-prompt retrieval (they show at session start only); merge detection for squash merges (git cannot tell; the agent confirms with the GitHub tools).
+**What exists:** the observer (async `PostToolUse` hook, per-branch running log, stateless cheap-model batches); `logbook log` as a savepoint (kind `log`, model-written or by code) with the modes `manual / ask / auto`; the per-commit
+machinery gone (nudge, scribe, backfill, context, before-commit notes, coverage counts) and, since #35, the end-of-session transcript draft, the per-commit sweep and the post-commit hook as well; publish by branch (`--branch`, `--merged`)
+with merge detection from git, `post-merge` / `post-rewrite` hooks that fetch shared logs in the background; branch memory at session start (including the logs of branches that have merged); the quota pause (reads the five-hour and
+seven-day usage Claude prints in its own stream, pauses at 95%, tells the person once per pause); and the **tidy worker** (#34: `tidy --work` on `tidy_model`, proposals checked against git, `manual` keeps them for `--proposals` /
+`--accept`, `auto` stores them and folds four or more private logs of a branch into one; originals archived, never deleted).
 
-**Decisions made on the owner's behalf overnight (change them if wrong):**
-- `never` is read as `manual` and `claude` as `ask`; a stored old value is read, not rewritten. `manual` lets you publish by hand and only stops the agent; `"publish": false` in `.logbook/policy.json` is now the only way to forbid publishing.
+**Verified:** the full suite (176 tests) on Linux, macOS and Windows; `tests/test_day.py`, a simulated working day (two people, three branches, ~350 tool uses through the real hooks, a fake `claude` on PATH so the real subprocess call,
+flags, stream parsing and pause run for free, a merge and publish, a pull, tidy auto, a teammate's session) with invariants checked at each stage (nothing lost or doubled, ledger equals calls made, no secret in a prompt or in anything
+shared, clean work tree), also run against the **installed rc3 and rc4 builds** with `LOGBOOK_SRC`; `bench/e2e.py` against rc1 to rc4 (58 checks); real Claude Code sessions on Windows against rc2, rc3 and rc4 (auto mode: the log is saved
+by itself at session end). The quota pause fired for real once (five-hour usage reached 101% mid-run; Logbook read it from Claude's stream, paused until the reset and said why). Two bugs only real use or real concurrency showed, both
+fixed: a savepoint that waited 5 seconds for a running pass and then silently saved nothing (and a lock taken over after 10 seconds, so a long pass could run twice), and logs of a merged branch vanishing from session start.
+**Not verified:** a whole real day of use (observation noise, whether the 120-calls-a-day cap is right); the ask-mode prompt and the "after a commit" auto trigger in a live session (Claude Code held `git commit` for approval in every
+headless run, so a real commit never happened; the unit and day tests cover both); the `post-merge` hook in a real `git pull` against a real remote; the band's new `manual ask auto` selector by eye; how Claude Code behaves with the
+plugin's GitHub MCP entry when `GITHUB_PERSONAL_ACCESS_TOKEN` is unset.
+**Not built:** logs ranked into per-prompt retrieval (they show at session start only); squash-merge detection (git cannot tell, so the agent confirms with the GitHub tools and names the branch).
+
+**Decisions made on the owner's behalf (change them if wrong):**
+- `never` is read as `manual` and `claude` as `ask`; a stored old value is read, not rewritten. `manual` lets you publish by hand and only stops the agent; `"publish": false` in `.logbook/policy.json` is the only way to forbid publishing.
 - `auto` no longer publishes a note when it is written; it publishes with the merge.
-- A savepoint carries a commit only if HEAD moved since the last savepoint (or, for the first, since its first observation); otherwise it is filed under the branch alone.
-- The summary of a savepoint is written by the cheap model, or by code when there is none (`--no-model`). A log reuses the existing body fields (request is `context`, completed is `what`, learned is `why`, next steps is `open`), so older versions show it as a plain finding.
-- Ask mode: the Stop hook blocks once per commit to have the agent ask whether to save a log. Auto mode: a detached `logbook log --quiet` after a commit with 5 or more new observations, and at session end.
-- The observer is on by default (kill switch `config worker off`); the old per-turn transcript notes are gone, and the agent text now says notes are for what must be kept.
-- The band changed only in its mode names (`manual ask auto`, three shades); nothing else in it was touched.
-- Removed with the per-commit machinery: the scribe agent (setup deletes one an earlier pre-release wrote, only if ours), `backfill`, `context`, `--before-commit`, the coverage counts. The git post-commit hook and the auto-copied commit sweep stay (they were not on the removal list).
+- A savepoint carries a commit only if HEAD moved since the last one; the log reuses the existing body fields, so older versions show it as a plain finding.
+- The tidy worker never judges a saved log (history, not a claim), and `tidy --garbage` now also lists old `auto-copied` drafts (archive only).
+- The plugin version moves with the package (`0.0.6-rc.N`) so an installed band updates; the band changed only in its mode names.
 
 **Also open:** decide whether `0.0.5` is released as it is or folded into the rescope release; delete the stray tag `v0.0.5rc2`, the old branch `docs/rescope` (its commit names the reference tool, which this repo's rules forbid; PR #26 is closed) and the other merged
 branches; yank 0.0.3 and 0.0.2 on PyPI; add a GitHub token for the MCP; a day of real use has not been measured for quota. Default answers to the smaller design questions are in `docs/RESCOPE.md`, "Open items".
