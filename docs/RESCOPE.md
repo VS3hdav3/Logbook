@@ -1,6 +1,6 @@
 # Rescope: a branch-scoped memory with savepoints
 
-Status: design, agreed with the owner on 2026-11-05 (the decisions below are theirs; the mapping to the reference tool and the open items at the end are mine). It replaces the
+Status: all five phases are built and open as PRs #28 to #32 (see the ROADMAP's "Current direction" for what is verified and what is not). Design, agreed with the owner on 2026-11-05 (the decisions below are theirs; the mapping to the reference tool and the open items at the end are mine). It replaces the
 "a note for every commit" goal, which the owner withdrew: "it should be the opposite or not even that".
 
 ## The idea
