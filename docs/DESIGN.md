@@ -4,9 +4,9 @@
 > the browser viewer was removed; Claude Code hook payloads are now verified in a real session; provenance, grounding checks, publish modes and notes as `key: value` lines were added.
 > Current state and plan: `docs/ROADMAP.md`; next design: `docs/TIDY-AND-MEMTREE.md`.
 
-Status: working prototype, stdlib only. Verified by `tests/` (unit, 17) and `logbook demo` (integration, ~35 checks) on
-Windows with Python 3.13 and git 2.51 only. Nothing here has been run on macOS/Linux, on a real GitHub/GitLab remote,
-or against a real Claude Code session.
+Status: working package, standard library only. The unit tests (`tests/`) run in CI on Windows, macOS and Linux (Python 3.10 and 3.13); `logbook demo` and `bench/e2e.py` (against an installed build)
+pass; real `claude -p` sessions have been run for the hooks, the permission hook, the scribe and tidy. Not run: against a real GitHub or GitLab remote with custom refs, on a big repo, or with
+an agent other than Claude Code (see the "Verify" list in `docs/ROADMAP.md`).
 
 ## Shape
 
@@ -54,17 +54,17 @@ branch lists and can trigger CI, so branches are only the reactive fallback.
 
 ## Not verified
 
-- Claude Code's real transcript JSONL schema (the parser is tolerant and only tested on a hand-made fixture) and real hook payloads.
-- GitHub / GitLab / Bitbucket / Azure behaviour with custom refs; Copilot, Codex, Cursor, Gemini hook formats.
-- Anything on macOS/Linux. `os.replace` retry and detached-process flags are written for Windows quirks but only run on Windows.
-- Whether agents actually use injected notes (no hit-rate measurement exists).
+- Claude Code's hook payloads and transcript were checked in real sessions (prompt, tool-use including inside a subagent, stop, subagent stop, session end) on one Claude Code version; other versions are untested.
+  Copilot, Codex, Cursor and Gemini hook formats were not checked (only the paste-in rules block exists for them).
+- GitHub / GitLab / Bitbucket / Azure behaviour with custom refs (push, fetch, PR links, CI fetching `refs/logbook`).
+- macOS and Linux beyond what the unit tests exercise in CI.
+- Whether agents actually use injected notes in real work (the only number is the toy benchmark below), and how often the reminder to record a note is needed (see `docs/ROADMAP.md`, "Measure").
 - `retention_days`, signed commits, GDPR-grade erasure, legal hold: not built.
 
-## Next steps (not started)
+## Next steps
 
-1. Run `logbook install --agent claude-code --write` in a throwaway repo with a real Claude Code session; capture real payloads and transcripts as golden fixtures.
-2. Push to a private GitHub repo and test: custom ref push, squash-merge PR number re-anchoring, CI fetch step.
-3. Stack-specific meaning (for example warehouse layers or lineage) stays out of this tool; another tool can attach tags to an anchor.
+The first design listed three steps; the first and third are done (real Claude Code sessions, golden fixtures, stack-specific meaning kept out of the tool). The second, a push to a real host with a
+squash-merge PR and a CI fetch step, is still open. What comes next is in `docs/ROADMAP.md`; the design of statuses, tidy and the full summary tree is in `docs/TIDY-AND-MEMTREE.md`.
 
 ## Does a note save the investigation? (smoke test)
 
@@ -99,7 +99,9 @@ which the agent ran `logbook note` without being asked. Four runs per setting, s
 
 A rerun on the final code, with block as the default, again wrote a note in 4 of 4 runs.
 
-So instructions alone were not enough, and the Stop-hook block is now the default (`logbook config nudge context|off` to soften or
+(Later real-session runs did not reproduce this as a need for the block: Claude often wrote its own note before any reminder fired. Treat the table as a 2026 smoke test, not a rate; the benchmark that replaces it is `bench/real_session.py`.)
+
+So instructions alone were not enough in that test, and the Stop-hook block is now the default (`logbook config nudge context|off` to soften or
 disable). A sample note it produced named the cause, what was read, what was ruled out, and what it had not verified. Four runs on a
 toy task say little about real work; the cost is one extra turn on turns that read or searched three or more times.
 
