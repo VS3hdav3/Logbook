@@ -1,7 +1,15 @@
 # Keeping notes true: tidy, status and the full summary tree
 
 Status: plan, agreed in conversation. Built so far: provenance labels, grounding checks on new notes, the walkable tree (`ask repo | branch: | commit: | note:`),
-supersede for your own notes, allow rules so safe commands do not prompt. Not built: everything below the line "Not built".
+supersede for your own notes, a permission hook instead of allow rules, the `logbook-scribe` agent, `logbook tidy` (candidates with reasons), `tidy --brief`
+(the notes' words for an agent to judge) and `tidy --apply` (statuses open / in-progress / resolved, stored as separate records by the note's author, checked
+against git, one approval for the whole list). Not built: everything below the line "Not built".
+
+How a status is stored: not by editing the note (a shared note is read first-copy-wins and publishing skips an id that is already shared). A status is an
+ordinary note with an extra `status` field `{of: <note id>, state, commits}` and the reason in its summary; older versions show it as a plain note and ignore the
+field. It counts only when its author is the author of the note it points at, the latest record wins, and `apply` stores it only when the commits it cites exist
+and touched the note's tracked files after the note was written. Tracked files: a change note is about its commit's files; a finding about the files it names
+(a finding is anchored to whatever HEAD was, which says nothing about its subject), or its commit's files when it names none.
 
 ## Who does what
 
@@ -61,5 +69,6 @@ folded into a summary by `tidy` stays reachable through `git show` and the archi
 
 ## Not built
 
-Per-note file tracking beyond `checks.files`; `logbook review`/`tidy`; statuses and who-superseded-it records; the scribe agent; summaries below the branch
-level and injection by descent; the garbage-collection rules above.
+The scribe doing the tidy judging (today the main agent reads `tidy --brief`); a trusted writer's status hiding a teammate's note; recording who superseded a note
+(name, and `agent-written` when Claude did it) beyond what `supersedes` already shows; summaries below the branch level and injection by descent; the
+garbage-collection rules above (hide, fold into a summary, delete the owner's own notes after confirmation).
