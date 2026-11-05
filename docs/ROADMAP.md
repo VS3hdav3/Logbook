@@ -5,7 +5,7 @@ anchored to commits, so the next agent starts from it instead of rediscovering i
 belongs in the separate tool (Almanac, repo folder `lodestone`).
 
 Read this first in a fresh session, then `CLAUDE.md` (how we work) and `docs/TIDY-AND-MEMTREE.md` (the design of what comes next).
-Last updated 2026-11-04, at the release of 0.0.4.
+Last updated 2026-11-04: 0.0.4 is on PyPI; 0.0.5rc1 is on TestPyPI (tag `v0.0.5rc1`, from `chore/release-0.0.5rc1`, which is `feat/note-status` plus the version bump).
 
 ## Where we are
 
@@ -27,9 +27,9 @@ environment; `LOGBOOK_WRITER=agent|user` overrides); grounding checks (`logbook 
   (n = 1). It also found two bugs the unit tests missed (below).
 - 0.0.4 from real PyPI: 43 end-to-end checks pass (`bench/e2e.py <logbook executable>`).
 
-## 0.0.5: built, in a stack of open PRs (#14 docs, then #15 to #19; merge in that order, each retargets to main)
+## 0.0.5: built and merged to `main` (#14 to #21); statuses are PR #22 (open); `0.0.5rc1` is on TestPyPI
 
-All five of the owner's items are built and pass the suite (CI green on #15 to #18 when this was written). Not released: no version bump or tag yet.
+All five of the owner's items are built, merged and pass the suite. Not on PyPI: only `0.0.5rc1` on TestPyPI, installed in a clean venv, where `bench/e2e.py` passes (including the hook, the scribe and `tidy`) and `claude plugin validate .` and `claude plugin test .` pass.
 
 1. **Evidence and 3 to 9 lines (#15).** An agent's finding or change note needs an `evidence:` line and 3 to 9 non-empty lines; a file or commit no longer counts as evidence;
    `--allow-ungrounded` bypasses only the evidence rule. A person's note and summary notes are exempt. Evidence is only checked to be non-empty.
@@ -43,7 +43,8 @@ All five of the owner's items are built and pass the suite (CI green on #15 to #
    Verified: prompt and stop hooks do not fire inside a subagent (so no recursion guard was needed), and given facts it wrote a grounded 6-line note for about 0.11 USD. **Not verified:** the nudge-to-scribe path end to end,
    the confinement in a real session (unit-tested only), and whether the scribe is cheaper or better than the main agent's own note (`bench/real_session.py --no-scribe` is there for that comparison; n = 1 each showed no difference).
 
-Left for 0.0.5 before release: the measurements above, `claude plugin validate .` and `claude plugin test .` (the band is untouched but was not re-run), the version bump, an rc tag and `bench/e2e.py` against the build installed from TestPyPI (it was updated for the hook and the scribe and passes against a local build of the branch, but not yet against an uploaded one), then the release PR.
+Left before 0.0.5 can be released (the owner's calls are marked): review and merge PR #22 (statuses); cut `0.0.5rc2` from `main` once it is in; decide what the nudge numbers must be
+(see "Measure" below); then the release PR, tag `v0.0.5` and the owner's click on the `pypi` environment. Yank 0.0.3 and 0.0.2 (owner).
 
 ## Statuses and `logbook tidy` (design in `docs/TIDY-AND-MEMTREE.md`): first half built, on `feat/note-status`
 
@@ -70,10 +71,34 @@ only the paste-in rules path exists, they need `LOGBOOK_WRITER=agent`); macOS an
 not the in-session dev copy; the band at narrow widths, click-to-open of the commit header on the owner's OS, and jump-to-answer for a very old message; whether notes change what a fresh agent does
 (2 or 3 teammates for a couple of weeks; the only number so far is a toy benchmark: median tool calls about 7 down to 1).
 
+## Left to do besides the unbuilt items above
+
+**Measure (nothing here has a real number yet)**
+- The nudge: agree targets and N with the owner, run `bench/real_session.py` for explain, debug, refactor and trivial (so far one trivial and a few debug runs: Claude wrote its own note in every debug run before any
+  reminder fired, so the reminder and the scribe hand-off were never exercised end to end). Then `--no-scribe` against the default for cost and note quality.
+- Whether the evidence rule produces better notes or just longer ones: it only checks that `evidence:` is non-empty and that a note has 3 to 9 lines; read real notes.
+- Whether notes change what a fresh agent does (2 or 3 teammates, a couple of weeks).
+
+**Verify (done only in `claude -p` or on fixtures)**
+- Interactive Claude Code: a hook `allow` skipping the prompt, `ask` showing it (and `tidy --apply` as the approval step), and how the hook's answers interact with the person's own allow and deny rules.
+- The scribe's Bash confinement in a real session (unit-tested only; the scribe declined to try), and the nudge-to-scribe path.
+- The permission hook next to other PreToolUse hooks that rewrite a command (the owner's own setup rewrites some commands before they run).
+- A status record shared to a teammate who runs an older version; `tidy` on a real repo with many notes (cost: one `git log` per note, newest 200).
+- Windows: a command line with backslashes (`C:\path\logbook.exe note ...`) gets no opinion from the hook, so it prompts as usual; a bare `logbook` is what an agent normally runs.
+
+**Product gaps found while building**
+- `tidy` is hidden from `logbook -h` (the listed seven are `setup note publish sync ask log status`): decide whether it is an eighth listed command once statuses are in use.
+- The 3 to 9 line rule counts lines of fields, not sentences, and `--allow-ungrounded` is the only way to save an agent note with nothing to run or read; a note about a pure decision has no honest `evidence:`.
+- A status record shows in `ask`/`log` as its own note ("resolved: ..."); hide records from the tree if that clutters.
+- The permission hook is conservative: a quoted argument containing `;`, `(`, `$` or a backslash gets no opinion (a prompt), even when harmless.
+- Line endings: the repo mixes CRLF and LF (Git warns on commit); a `.gitattributes` would stop that.
+- The CHANGELOG has an `Unreleased` section; rename it to `0.0.5` at release.
+
 ## Housekeeping
 
-Yank 0.0.3 and 0.0.2 on PyPI (owner). Delete stale branches (local `viewer-v2-merge-cards`, remote `chore/release-0.0.4rc3`; keep `viewer`, which holds the removed browser viewer). Refresh `docs/DESIGN.md`
-(it still describes per-device refs and an unverified Claude hook). One commit message in history has a stray `¹` (it cannot be fixed without a force-push, which is blocked). Almanac (folder `lodestone`) is untouched and separate.
+Yank 0.0.3 and 0.0.2 on PyPI (owner). Delete merged branches, local and remote (the feature branches of 0.0.3 to 0.0.5, `chore/release-0.0.3`, `chore/release-0.0.4`, `chore/release-0.0.4rc3`, `chore/release-setup`, `release/0.0.1`,
+`viewer-v2-merge-cards`, `docs/*`; keep `viewer`, which holds the removed browser viewer, and keep release tags). Refresh `docs/DESIGN.md` (it still describes per-device refs and an unverified Claude hook).
+One commit message in history has a stray `¹` (it cannot be fixed without a force-push, which is blocked). Almanac (folder `lodestone`) is untouched and separate.
 
 ## Decided (do not reopen without a reason)
 
