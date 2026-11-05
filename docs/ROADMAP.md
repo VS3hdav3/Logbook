@@ -23,11 +23,11 @@ Where this conflicts with the sections below (a note for every commit, `backfill
 - The GitHub MCP is used in the dev workflow and registered by the plugin (the owner adds the token; the repo never stores one).
 - The memtree matters less now; revisit after the observer works.
 
-**Status (2026-11-05, end of the overnight run).** The 0.0.5 work (#14 to #25) is merged to `main`; `0.0.5rc5` is on TestPyPI. The design is PR #27. All five phases are built as a **stack of five PRs, none merged**
+**Status (2026-11-05, end of the overnight run).** The 0.0.5 work (#14 to #25) is merged to `main`; `0.0.5rc5` is on TestPyPI. The design is PR #27. All five phases are built as a **stack of five PRs (plus #33), none merged**
 (each is based on the previous one; merge in this order with merge commits, retargeting the next to `main` after each): **#28** observer (`running.py`, `observer.py`, a slim `worker.py`, async `PostToolUse` hooks,
 `worker --drain`), **#29** savepoint (`logbook log`, kind `log`, `savepoint.py`, modes `manual / ask / auto`, the old view renamed `history`, band selector renamed), **#30** the per-commit machinery removed (nudge, scribe, backfill,
 context, before-commit notes, coverage counts), **#31** publish by branch (`publish --branch / --merged`, `branches.py`, `post-merge` / `post-rewrite` hooks, `tidy` fetches first, `auto` no longer publishes at write time),
-**#32** branch memory at session start and the GitHub MCP in the plugin. CI is green on all six jobs for #28 to #31 (#32 was still running when this was written). The full suite (150 tests), the demo, the band tests, `claude plugin validate`
+**#32** branch memory at session start and the GitHub MCP in the plugin. **#33** (added later the same morning) pauses the background calls before the subscription allowance runs out: it reads the five-hour and seven-day usage Claude prints in its own stream, pauses at 95% (`config quota_pause`) until the reset, and tells the person once per pause. CI is green on all six jobs for #28 to #31 (#32 was still running when this was written). The full suite (150 tests), the demo, the band tests, `claude plugin validate`
 and `bench/e2e.py` against a fresh local build (58 checks) pass.
 
 **Verified for real:** one real haiku pass per phase (observations, then a savepoint summary); one real Claude Code session on Windows (planted bug, fresh build, `logbook setup`, `claude -p`): the async hooks queued 5 tool uses, the detached
