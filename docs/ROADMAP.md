@@ -5,7 +5,7 @@ anchored to commits, so the next agent starts from it instead of rediscovering i
 belongs in the separate tool (Almanac, repo folder `lodestone`).
 
 Read this first in a fresh session, then `CLAUDE.md` (how we work) and `docs/TIDY-AND-MEMTREE.md` (the design of what comes next).
-Last updated 2026-11-04: 0.0.4 is on PyPI; 0.0.5rc1 is on TestPyPI (tag `v0.0.5rc1`, from `chore/release-0.0.5rc1`, which is `feat/note-status` plus the version bump).
+Last updated 2026-11-05: 0.0.4 is on PyPI; **0.0.5rc4** is on TestPyPI (tag `v0.0.5rc4`, from `chore/release-0.0.5rc4`: PR #22 statuses, #23 polish and numbers, #24 the index-lock fix, plus the version bump). rc1 and rc3 are also there. The tag `v0.0.5rc2` is a mistake that published nothing (it points at a commit whose version was still 0.0.4, so the publish check refused it): delete it (the owner; the auto-mode classifier blocked me).
 
 ## Where we are
 
@@ -27,7 +27,7 @@ environment; `LOGBOOK_WRITER=agent|user` overrides); grounding checks (`logbook 
   (n = 1). It also found two bugs the unit tests missed (below).
 - 0.0.4 from real PyPI: 43 end-to-end checks pass (`bench/e2e.py <logbook executable>`).
 
-## 0.0.5: built and merged to `main` (#14 to #21); statuses are PR #22 (open); `0.0.5rc1` is on TestPyPI
+## 0.0.5: built and merged to `main` (#14 to #21); PRs #22 to #24 (statuses, polish, lock fix) are open and stacked; `0.0.5rc4` is on TestPyPI
 
 All five of the owner's items are built, merged and pass the suite. Not on PyPI: only `0.0.5rc1` on TestPyPI, installed in a clean venv, where `bench/e2e.py` passes (including the hook, the scribe and `tidy`) and `claude plugin validate .` and `claude plugin test .` pass.
 
@@ -43,7 +43,7 @@ All five of the owner's items are built, merged and pass the suite. Not on PyPI:
    Verified: prompt and stop hooks do not fire inside a subagent (so no recursion guard was needed), and given facts it wrote a grounded 6-line note for about 0.11 USD. **Not verified:** the nudge-to-scribe path end to end,
    the confinement in a real session (unit-tested only), and whether the scribe is cheaper or better than the main agent's own note (`bench/real_session.py --no-scribe` is there for that comparison; n = 1 each showed no difference).
 
-Left before 0.0.5 can be released (the owner's calls are marked): review and merge PR #22 (statuses); cut `0.0.5rc2` from `main` once it is in; decide what the nudge numbers must be
+Left before 0.0.5 can be released (the owner's calls are marked): review and merge PRs #22, #23 and #24 in that order; cut `0.0.5rc5` from `main` once they are in; decide what the nudge numbers must be
 (see "Measure" below); then the release PR, tag `v0.0.5` and the owner's click on the `pypi` environment. Yank 0.0.3 and 0.0.2 (owner).
 
 ## Statuses and `logbook tidy` (design in `docs/TIDY-AND-MEMTREE.md`): first half built, on `feat/note-status`
