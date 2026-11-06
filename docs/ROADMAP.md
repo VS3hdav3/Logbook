@@ -4,8 +4,8 @@ Logbook is a general tool for AI-assisted git repos: it keeps what the agent and
 anchored to commits, so the next agent starts from it instead of rediscovering it. Not tied to data warehouses or dbt; anything warehouse-specific
 belongs in the separate tool (Almanac, repo folder `lodestone`).
 
-Read this first in a fresh session, then `CLAUDE.md` (how we work) and `docs/TIDY-AND-MEMTREE.md` (the design of what comes next).
-Last updated 2026-11-05 (the rescope below was agreed after this paragraph was written): 0.0.4 is on PyPI; **0.0.5rc4** is on TestPyPI (tag `v0.0.5rc4`, from `chore/release-0.0.5rc4`: PR #22 statuses, #23 polish and numbers, #24 the index-lock fix, plus the version bump). rc1 and rc3 are also there. The tag `v0.0.5rc2` is a mistake that published nothing (it points at a commit whose version was still 0.0.4, so the publish check refused it): delete it (the owner; the auto-mode classifier blocked me).
+Read this first in a fresh session, then `CLAUDE.md` (how we work) and `docs/TIDY-AND-SUMMARY-TREE.md` (the design of what comes next).
+Last updated 2026-11-06: **0.0.6 is released on PyPI** (tag `v0.0.6`, from the release PR #37); `pip install getlogbook` gets it and `/plugin marketplace add vssehdave/Logbook` then `/plugin install logbook@logbook` installs the band. Everything below the "Current direction" section describes the 0.0.5 state and is partly superseded by the rescope; read "Current direction" first.
 
 ## Current direction: the rescope (owner, 2026-11-05). Read `docs/RESCOPE.md` first
 
@@ -21,10 +21,10 @@ Where this conflicts with the sections below (a note for every commit, `backfill
 - Publishing moves a branch's stored logs to the shared log. In auto mode it is triggered when a branch the person worked on is merged; the **main model** runs `logbook publish`, not the observer.
   `logbook sync` brings shared logs in and also runs on `git pull` (pull-only, never pushes). `logbook tidy` runs that sync first, then reconciles the private logs, with its own background worker on a separate cheap model.
 - The GitHub MCP is used in the dev workflow and registered by the plugin (the owner adds the token; the repo never stores one).
-- The memtree matters less now; revisit after the observer works.
+- The summary tree matters less now; revisit after the observer works.
 
-**Status (2026-11-05, after the first full day of testing).** The rescope is built and merged to `main` (#27 to #35). Owner decisions since the overnight run: keep PyPI; everything folds into a single **0.0.6** release;
-until then only release candidates go out, to TestPyPI (`v0.0.6rcN`; the final tag and the PyPI upload wait for the owner's yes). `0.0.6rc1` to `rc4` are on TestPyPI; `rc4` is the latest and includes everything below.
+**Status (2026-11-06, after the 0.0.6 release).** The rescope is built, merged to `main` (#27 to #37) and released as **0.0.6** on PyPI. `0.0.6rc1` to `rc4` went to TestPyPI first and passed the suite,
+the simulated day and `bench/e2e.py` as installed builds. Owner decisions: keep PyPI; the next fixes go out as `0.0.7rcN` on TestPyPI (`v0.0.7rcN`) until the owner asks for a final; the final tag and the PyPI upload always wait for the owner's yes and his click on the `pypi` environment.
 
 **What exists:** the observer (async `PostToolUse` hook, per-branch running log, stateless cheap-model batches); `logbook log` as a savepoint (kind `log`, model-written or by code) with the modes `manual / ask / auto`; the per-commit
 machinery gone (nudge, scribe, backfill, context, before-commit notes, coverage counts) and, since #35, the end-of-session transcript draft, the per-commit sweep and the post-commit hook as well; publish by branch (`--branch`, `--merged`)
@@ -49,8 +49,11 @@ plugin's GitHub MCP entry when `GITHUB_PERSONAL_ACCESS_TOKEN` is unset.
 - The tidy worker never judges a saved log (history, not a claim), and `tidy --garbage` now also lists old `auto-copied` drafts (archive only).
 - The plugin version moves with the package (`0.0.6-rc.N`) so an installed band updates; the band changed only in its mode names.
 
-**Also open:** decide whether `0.0.5` is released as it is or folded into the rescope release; delete the stray tag `v0.0.5rc2`, the old branch `docs/rescope` (its commit names the reference tool, which this repo's rules forbid; PR #26 is closed) and the other merged
-branches; yank 0.0.3 and 0.0.2 on PyPI; add a GitHub token for the MCP; a day of real use has not been measured for quota. Default answers to the smaller design questions are in `docs/RESCOPE.md`, "Open items".
+**Also open (2026-11-06):** the owner deletes the stray tag `v0.0.5rc2` and the old merged branches (`docs/rescope` among them: its commit names the reference tool, which this repo's rules forbid; PR #26 is closed) and yanks 0.0.2 and 0.0.3 on PyPI
+(they have the file-overwrite hole fixed in 0.0.4); a GitHub token for the plugin's MCP entry (`GITHUB_PERSONAL_ACCESS_TOKEN`); a real day of use on the owner's own repos (observation noise, the 120-calls-a-day cap, a real commit
+in `ask` and `auto` mode, a real `git pull` with the `post-merge` hook); a look at the band's `manual ask auto` selector by eye; `docs/DESIGN.md` still describes the 0.0.4 design. **Found in first real use of 0.0.6:** the observer
+wrote a document's stale status ("0.0.5rc4 is the newest build", read from this file) as a fact; fixed on `fix/doc-claims` (the observer and the savepoint now keep a document's claim attributed and say it may be out of date). Default answers
+to the smaller design questions are in `docs/RESCOPE.md`, "Open items".
 
 ## Where we are
 
@@ -91,7 +94,7 @@ All five of the owner's items are built, merged and pass the suite. Not on PyPI:
 Left before 0.0.5 can be released (the owner's calls are marked): review and merge PRs #22, #23 and #24 in that order; cut `0.0.5rc5` from `main` once they are in; decide what the nudge numbers must be
 (see "Measure" below); then the release PR, tag `v0.0.5` and the owner's click on the `pypi` environment. Yank 0.0.3 and 0.0.2 (owner).
 
-## The background worker and the private memtree (owner's decision, 2026-11-05; PR `feat/worker`)
+## The background worker and the private summary tree (owner's decision, 2026-11-05; PR `feat/worker`)
 
 Reverses the earlier "no model of our own" rule, as an opt-in. `logbook config worker on`: after each finished turn a detached process sends the new transcript to `haiku` through the person's own
 `claude -p` (no key stored) and writes the few things worth keeping as **private** `worker-written` notes, anchored to branch and commit, so they sit in the same repo > branch > commit > note tree.
@@ -105,12 +108,12 @@ a usage-allowance error. Measured over 8 real sessions (debug, explain, refactor
 (under 1%); the debug sessions kept 1 note each (one an accurate root-cause note with quoted output, one a fair design observation about partial refunds, with an honest `open` caveat); explain and refactor kept none;
 4 of 6 explain/refactor/trivial sessions made no call. Where the agent had already written the same note, the worker dropped its duplicate. n = 2 per task: a first look, not a rate.
 
-**Not verified / not built:** the memtree is the existing tree plus the worker's notes; **the worker does not yet refresh branch or area summaries** (the next step: a second pass that rewrites a stale summary, with the
+**Not verified / not built:** the summary tree is the existing tree plus the worker's notes; **the worker does not yet refresh branch or area summaries** (the next step: a second pass that rewrites a stale summary, with the
 same caps); injection still ranks flat rather than descending the tree; no check of how much quota a day of real use spends (only dollars as the CLI reports them); a long session whose final turn ends while a pass is
 still running leaves that tail to the next session's pass; tested only on Windows (the detached start uses the same code as the post-commit worker); a worker draft is not yet offered in `publish` (publish by id).
 The tidy `auto` mode only archives; judging a note outdated still needs the person (`tidy --apply`).
 
-## Statuses and `logbook tidy` (design in `docs/TIDY-AND-MEMTREE.md`): first half built, on `feat/note-status`
+## Statuses and `logbook tidy` (design in `docs/TIDY-AND-SUMMARY-TREE.md`): first half built, on `feat/note-status`
 
 Built: `logbook tidy` lists candidates with reasons (files changed in later commits, notes that may repeat each other, old auto-copied drafts); `tidy --brief` is the brief for an agent;
 `tidy --apply` stores approved statuses (open, in-progress, resolved) as separate records written by the note's author, validated against git (the commits cited exist and touched the
@@ -126,7 +129,7 @@ Not built: the scribe doing the tidy judging; a trusted writer's status hiding a
 
 Summaries at repo, branch, area (directory or topic) and commit; each lists its notes and is refreshed only when one of them changes (the rule that already exists for repo and branch);
 injection descends the tree instead of ranking flat notes; ranking moves onto the tree; tidy folds old leaves into their parent summary. The owner wants this complete, since it makes
-superseding and tidy simpler to plan. Write the design in `docs/TIDY-AND-MEMTREE.md` into code in the order: area summaries, injection by descent, ranking, then GC folding.
+superseding and tidy simpler to plan. Write the design in `docs/TIDY-AND-SUMMARY-TREE.md` into code in the order: area summaries, injection by descent, ranking, then GC folding.
 
 ## Verification debt (nothing here is tested yet)
 
