@@ -2,7 +2,7 @@
 
 > **Partly out of date (kept as the record of the first design).** Since then: one shelf per person (`<user>/000000`) replaced per-device refs; `git push` no longer sends notes (`logbook sync` does);
 > the browser viewer was removed; Claude Code hook payloads are now verified in a real session; provenance, grounding checks, publish modes and notes as `key: value` lines were added.
-> Current state and plan: `docs/ROADMAP.md`; next design: `docs/TIDY-AND-MEMTREE.md`.
+> Current state and plan: `docs/ROADMAP.md`; next design: `docs/TIDY-AND-SUMMARY-TREE.md`.
 
 Status: working package, standard library only. The unit tests (`tests/`) run in CI on Windows, macOS and Linux (Python 3.10 and 3.13); `logbook demo` and `bench/e2e.py` (against an installed build)
 pass; real `claude -p` sessions have been run for the hooks, the permission hook, the scribe and tidy. Not run: against a real GitHub or GitLab remote with custom refs, on a big repo, or with
@@ -64,7 +64,7 @@ branch lists and can trigger CI, so branches are only the reactive fallback.
 ## Next steps
 
 The first design listed three steps; the first and third are done (real Claude Code sessions, golden fixtures, stack-specific meaning kept out of the tool). The second, a push to a real host with a
-squash-merge PR and a CI fetch step, is still open. What comes next is in `docs/ROADMAP.md`; the design of statuses, tidy and the full summary tree is in `docs/TIDY-AND-MEMTREE.md`.
+squash-merge PR and a CI fetch step, is still open. What comes next is in `docs/ROADMAP.md`; the design of statuses, tidy and the full summary tree is in `docs/TIDY-AND-SUMMARY-TREE.md`.
 
 ## Does a note save the investigation? (smoke test)
 
