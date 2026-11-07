@@ -140,6 +140,8 @@ not the in-session dev copy; the band at narrow widths, click-to-open of the com
 
 ## Left to do besides the unbuilt items above
 
+- **Branch renames (owner, 2026-11-06).** Logs, notes, the running log and the queue all key on the branch name. Work out what happens when a person renames a branch, or the repo's main branch (master to main): the running log folder, `anchor.branch`, `publish --branch`, merged-branch detection and tidy's "branch is gone and was never merged" signal (which would wrongly call renamed work abandoned). Needs detection (reflog or default-branch change), re-pointing, and a tidy guard. Not built.
+
 **Measure (nothing here has a real number yet)**
 - The nudge, measured on 0.0.5rc2-era code with `bench/real_session.py` (real `claude -p`, one fresh fixture repo per run, n = 2 per task, so a first look and not a rate):
   trivial: no reminder, no note (2 of 2). Debug with a planted bug: Claude wrote its own grounded note with an evidence line that names the refund cause in 2 of 2 runs with the scribe installed and 2 of 2 without,
